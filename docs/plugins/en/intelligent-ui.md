@@ -13,8 +13,9 @@
 
 ## Scrolling and gestures
 
-- The card does not register an `EagerGestureRecognizer`. Under Flutter's gesture arena, vertical drags stay with the outer chat list, so swiping anywhere on the card scrolls the chat; the WebView only receives gestures nobody else claims (taps).
+- The card does not register an `EagerGestureRecognizer`; it registers only a `LongPressGestureRecognizer`. Under Flutter's gesture arena, vertical drags stay with the outer chat list, so swiping anywhere on the card scrolls the chat; taps and long presses (text selection and the system selection toolbar) go to the WebView.
 - The card does not scroll vertically and does not claim horizontal gestures: internal `max-height` and horizontal scrolling are removed from tables, code blocks and diffs. Tables use a fixed width and wrap cell content. This avoids both nested scroll conflicts and conflict with the phone's edge swipe that opens the app drawer.
+- Card content uses 8px horizontal padding to make the most of the phone width; the title row keeps `ChatCard`'s 16.
 - Card height is still capped by `maxHeight`; content beyond the cap is clipped by the renderer. An expand entry point can be added later without changing the gesture policy.
 
 ## Security boundary

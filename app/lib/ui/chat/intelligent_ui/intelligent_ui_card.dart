@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -387,11 +389,14 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         ? const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))
         : SizedBox(
             height: _height.toDouble(),
-            // 不设置 gestureRecognizers：Flutter 的默认手势仲裁会让外层
-            // CustomScrollView 接管纵向拖动，WebView 只处理未被认领的
-            // 手势（点击、表格/代码块的横向拖动）。这样在卡片任意位置
-            // 上下滑都会滚动聊天页，而不是被 WebView 吃掉。
-            child: WebViewWidget(controller: _controller!),
+            // 只让长按进入 WebView，用于选中文字并弹出系统选择工具条；
+            // 纵向拖动不注册，仍由外层 CustomScrollView 接管。
+            child: WebViewWidget(
+              controller: _controller!,
+              gestureRecognizers: {
+                Factory<LongPressGestureRecognizer>(LongPressGestureRecognizer.new),
+              },
+            ),
           );
     final title = widget.artifact.title?.trim();
     return ChatCard(
@@ -399,7 +404,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       title: title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
           child: AnimatedSize(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
