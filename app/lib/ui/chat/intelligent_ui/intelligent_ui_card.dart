@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -211,7 +212,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       if (controller.platform case final AndroidWebViewController android) {
         await android.setAllowFileAccess(false);
         await android.setAllowContentAccess(false);
-        await android.setMixedContentMode(MixedContentMode.never);
+        await android.setMixedContentMode(MixedContentMode.neverAllow);
       }
       _guard = WebViewGuard(onGone: (crashed) {
         if (!mounted) return;
