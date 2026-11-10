@@ -770,5 +770,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "chatIntelligentUiTitle": "智能界面",
+  "chatIntelligentUiActionTitle": "发送界面操作？",
+  "chatIntelligentUiUnavailable": "界面卡片暂不可用"
 }

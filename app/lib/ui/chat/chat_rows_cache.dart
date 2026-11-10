@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../state/artifacts.dart';
 import '../../state/chat_state.dart';
+import '../../state/intelligent_ui.dart';
 import 'chat_rows.dart';
 import 'tool_view.dart' show ToolCardPlacement;
 
@@ -14,6 +15,7 @@ class ChatRowsCache {
   ChatState? _state;
   bool _foldTurns = false;
   List<TurnArtifacts> _artifacts = const [];
+  List<IntelligentUiArtifact> _intelligentUis = const [];
   List<ChatRow> _rows = const [];
   Map<String, int> _index = const {};
 
@@ -24,13 +26,19 @@ class ChatRowsCache {
   bool get onlyDraftChanged => _onlyDraftChanged;
   bool _onlyDraftChanged = false;
 
-  List<ChatRow> update(ChatState state, {required bool foldTurns, List<TurnArtifacts> artifacts = const []}) {
+  List<ChatRow> update(
+    ChatState state, {
+    required bool foldTurns,
+    List<TurnArtifacts> artifacts = const [],
+    List<IntelligentUiArtifact> intelligentUis = const [],
+  }) {
     final previous = _state;
     _onlyDraftChanged = false;
     List<ChatRow>? reused;
     if (previous != null &&
         foldTurns == _foldTurns &&
         listEquals(artifacts, _artifacts) &&
+        listEquals(intelligentUis, _intelligentUis) &&
         state.running == previous.running &&
         listEquals(state.approvals, previous.approvals) &&
         listEquals(state.questions, previous.questions) &&
@@ -43,6 +51,7 @@ class ChatRowsCache {
     _state = state;
     _foldTurns = foldTurns;
     _artifacts = artifacts;
+    _intelligentUis = intelligentUis;
     if (reused != null) {
       _rows = reused;
     } else {
@@ -57,6 +66,7 @@ class ChatRowsCache {
         turns: state.turns,
         foldTurns: foldTurns,
         artifacts: artifacts,
+        intelligentUis: intelligentUis,
       );
       _index = {for (var i = 0; i < _rows.length; i++) _rows[i].key: i};
     }

@@ -5007,6 +5007,15 @@ class L10nEn extends L10n {
   }
 
   @override
+  String get chatIntelligentUiTitle => 'Interactive UI';
+
+  @override
+  String get chatIntelligentUiActionTitle => 'Send UI action?';
+
+  @override
+  String get chatIntelligentUiUnavailable => 'UI card unavailable';
+
+  @override
   String get commonCancel => 'Cancel';
 
   @override

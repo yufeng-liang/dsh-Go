@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../state/artifacts.dart';
 import '../../state/chat_state.dart';
+import '../../state/intelligent_ui.dart';
 import 'tool_view.dart';
 import 'turn_summary.dart';
 
@@ -58,8 +59,12 @@ final class AssistantRow extends ChatRow {
 }
 
 final class ToolCallRow extends ChatRow {
-  const ToolCallRow(this.item, {this.card = ToolCardPlacement.inline});
+  const ToolCallRow(this.item, {this.card = ToolCardPlacement.inline, this.uiArtifact});
   final ToolChatItem item;
+
+  /// intelligent-ui 投影出的卡片；按 tool call id 匹配，非空时同样按原生
+  /// 卡片处理（折叠时工具行进过程、卡片留在外面）。
+  final IntelligentUiArtifact? uiArtifact;
 
   /// 带原生卡片时卡片画在哪;不带卡片的调用永远是 inline。
   /// 折叠后外露的卡片沿用这次调用的主键:同一个元素从「工具行 + 卡片」
@@ -212,10 +217,16 @@ List<ChatRow> deriveRows({
   List<TurnTrace> turns = const [],
   bool foldTurns = false,
   List<TurnArtifacts> artifacts = const [],
+  List<IntelligentUiArtifact> intelligentUis = const [],
 }) {
   debugDeriveRowsCount++;
   final rows = <ChatRow>[];
   final attached = <String>{};
+  final uiByCall = {for (final ui in intelligentUis) ui.uiId: ui};
+  final uiBySeq = {
+    for (final ui in intelligentUis)
+      if (ui.originSeq case final seq?) seq: ui,
+  };
   var tools = <ToolChatItem>[];
   var nextCommand = 0;
 
@@ -239,16 +250,17 @@ List<ChatRow> deriveRows({
         rows.add(ToolGroupRow(run, live: live));
       } else {
         for (final tool in run) {
-          rows.add(ToolCallRow(tool));
+          rows.add(ToolCallRow(tool, uiArtifact: uiByCall[tool.callId] ?? uiBySeq[tool.seq]));
         }
       }
       run = <ToolChatItem>[];
     }
 
     for (final tool in tools) {
-      if (hasToolCard(tool)) {
+      final ui = uiByCall[tool.callId] ?? uiBySeq[tool.seq];
+      if (hasToolCard(tool) || ui != null) {
         flushRun();
-        rows.add(ToolCallRow(tool));
+        rows.add(ToolCallRow(tool, uiArtifact: ui));
       } else {
         run.add(tool);
       }
@@ -313,11 +325,11 @@ List<ChatRow> deriveRows({
     var messages = 0;
     for (var i = start; i < end; i++) {
       switch (rows[i]) {
-        case final ToolCallRow row when hasToolCard(row.item):
+        case final ToolCallRow row when hasToolCard(row.item) || row.uiArtifact != null:
           // 原生卡片是给人看的:工具行收进去,卡片留在外面。
           toolCalls++;
           process.add(ToolCallRow(row.item, card: ToolCardPlacement.rowOnly));
-          kept.add(ToolCallRow(row.item, card: ToolCardPlacement.cardOnly));
+          kept.add(ToolCallRow(row.item, card: ToolCardPlacement.cardOnly, uiArtifact: row.uiArtifact));
         case final ToolCallRow row:
           toolCalls++;
           process.add(row);

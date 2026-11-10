@@ -11,6 +11,7 @@ dsh-go 的原生界面可以显示 DSH 插件的内容：工具结果画成卡�
 | 你想要 | 要写的 | 读 |
 |---|---|---|
 | 工具结果显示成原生卡片 | 工具的 `presentationMeta` 里加一个视图，5 分钟 | [快速开始](quickstart.md) |
+| 显示 `deepseek-harness-intelligent-ui` 的声明式 / widget / composition 卡片 | 插件不变；App 侧投影并显示 | [intelligent-ui 卡片](intelligent-ui.md) |
 | 先看看什么已经是原生的 | 命令、技能、设置表单、dsh-ui 卡——都不用写 App 代码 | [不写 App 代码就原生显示的东西](native-for-free.md) |
 | 胶囊、消息菜单、状态条、面板 | `package.json` 的 `dshGo` 清单 + `ctx.dshGo` | [插槽参考](slots.md) |
 | 加号面板工具、对话操作、回合尾注 | 同上，较新的位置 | [插槽参考](slots.md#较新的位置) |

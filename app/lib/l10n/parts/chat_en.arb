@@ -319,5 +319,8 @@
   "chatGoalStateSemantics": "Goal, {objective}, {state}",
   "chatTodoItemSemantics": "{content}, {state}",
   "chatMentionSemantics": "{kind}: {label}",
-  "chatArtifactSemantics": "{name}, {description}"
+  "chatArtifactSemantics": "{name}, {description}",
+  "chatIntelligentUiTitle": "Interactive UI",
+  "chatIntelligentUiActionTitle": "Send UI action?",
+  "chatIntelligentUiUnavailable": "UI card unavailable"
 }
