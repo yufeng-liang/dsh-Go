@@ -25,7 +25,7 @@ import 'intelligent_ui_bridge.dart';
 const _mobileStyles = '''
 html,body{padding:0;margin:0;overflow-x:hidden;background:transparent;-webkit-tap-highlight-color:transparent}
 .diui-remote-title{display:none!important}
-.diui-remote{padding:2px 0 6px;font-size:13px}
+#ui .diui-remote{padding:0 0 6px!important;font-size:13px}
 .diui-compose{display:flex;flex-direction:column;gap:10px;padding:2px 0 8px}
 .diui-compose .diui-md{font-size:13px;line-height:1.5}
 .diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;border-radius:8px;max-height:none!important;overflow:visible!important}
@@ -404,7 +404,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       title: title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: AnimatedSize(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
