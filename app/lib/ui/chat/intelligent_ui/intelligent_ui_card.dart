@@ -26,11 +26,14 @@ html,body{padding:0;margin:0;overflow-x:hidden;background:transparent;-webkit-ta
 .diui-remote{padding:2px 0 6px;font-size:13px}
 .diui-compose{display:flex;flex-direction:column;gap:10px;padding:2px 0 8px}
 .diui-compose .diui-md{font-size:13px;line-height:1.5}
-.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;overscroll-behavior-y:none;border-radius:8px;max-height:none!important;overflow-x:auto!important;overflow-y:hidden!important}
-.diui-md table,.diui-md pre,.diui-code,.diui-problem-detail,.diui-diff-body,.diui-map-list,.diui-tablist{max-height:none!important;overflow-y:visible!important}
-.diui-md table,.diui-md pre,.diui-code,.diui-diff-body,.diui-tablist{overflow-x:auto!important}
-.diui-table th,.diui-table td{padding:8px 12px;font-size:13px}
-.diui-table th{white-space:nowrap;font-weight:600}
+.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;border-radius:8px;max-height:none!important;overflow:visible!important}
+.diui-md table,.diui-md pre,.diui-code,.diui-problem-detail,.diui-diff-body,.diui-map-list,.diui-tablist{max-height:none!important;overflow-y:visible!important;overflow-x:hidden!important}
+.diui-md table,.diui-md pre,.diui-code,.diui-diff-body,.diui-tablist{width:100%!important;max-width:100%!important}
+.diui-md table,.diui-table{table-layout:fixed!important}
+.diui-table th,.diui-table td{padding:8px 12px;font-size:13px;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word}
+.diui-table th{font-weight:600}
+.diui-md pre,.diui-code{white-space:pre-wrap!important;word-break:break-word!important}
+.diui-tablist{flex-wrap:wrap!important;white-space:normal!important}
 .diui-button,.diui-choice-submit,.diui-table-tools button{min-height:36px;padding:6px 14px;border-radius:8px;touch-action:manipulation;font-size:13px}
 .diui-table-tools{gap:8px;margin-bottom:8px}
 .diui-table-tools input[type=search]{height:36px;padding:0 10px;font-size:13px;border-radius:8px}

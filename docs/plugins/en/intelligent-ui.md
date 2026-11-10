@@ -13,8 +13,8 @@
 
 ## Scrolling and gestures
 
-- The card does not register an `EagerGestureRecognizer`. Under Flutter's gesture arena, vertical drags stay with the outer chat list, so swiping anywhere on the card scrolls the chat; the WebView only receives gestures nobody else claims (taps and horizontal drags).
-- Horizontally scrollable regions such as tables, code blocks and diffs keep horizontal dragging, but no longer scroll vertically inside the card: internal `max-height` values are removed so the card grows with its content and avoids nested scroll conflicts.
+- The card does not register an `EagerGestureRecognizer`. Under Flutter's gesture arena, vertical drags stay with the outer chat list, so swiping anywhere on the card scrolls the chat; the WebView only receives gestures nobody else claims (taps).
+- The card does not scroll vertically and does not claim horizontal gestures: internal `max-height` and horizontal scrolling are removed from tables, code blocks and diffs. Tables use a fixed width and wrap cell content. This avoids both nested scroll conflicts and conflict with the phone's edge swipe that opens the app drawer.
 - Card height is still capped by `maxHeight`; content beyond the cap is clipped by the renderer. An expand entry point can be added later without changing the gesture policy.
 
 ## Security boundary
