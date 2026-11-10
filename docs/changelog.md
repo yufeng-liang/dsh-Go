@@ -14,7 +14,7 @@
 - 引擎和运行环境：上一次启动迟到的日志不再混进这次的故障快照和诊断；停止和自动安全模式同时发生时，状态不会被旧的「正在停止」盖回去；停止后迟到的刷新不会把已撤掉的前台通知发回来；持久终端的就绪判断不再受系统时间跳变影响。
 - 通知和视频：审批点过、结果还没回来时重发的通知保留你的决定，显示「正在处理」，不再给按钮；上一次申请迟到的失焦回调不会再暂停刚恢复的视频。
 - 其他修复：永久删除对话时一并删掉迁移留下的临时正文；最近会话的桌面快捷方式迁移失败时保留旧入口，下次再试（#22）；Agent Team 冷恢复时，子 agent 已领取的初始输入不再被判失败（实验功能）。
-- 聊天界面支持 `deepseek-harness-intelligent-ui` 插件：工具返回的声明式、widget 和 composition 界面会显示成聊天里的交互卡片，支持按钮、表单、表格、图表和提问；卡片按需创建受限 WebView，不加载远端代码，网络和链接按插件的客户端策略收紧。卡片里的文字可以长按选中，表格在手机上自动换行、不抢占左右滑动，内容边距也收窄了。
+- 聊天界面支持 `deepseek-harness-intelligent-ui` 插件：工具返回的声明式、widget 和 composition 界面会显示成聊天里的交互卡片，支持按钮、表单、表格、图表和提问；卡片按需创建受限 WebView，不加载远端代码，网络和链接按插件的客户端策略收紧；卡片文字可长按选中，表格在手机上自动换行且不抢占左右滑动，内容边距收窄，分享卡片也会带上 UI 内容。
 
 ### English
 
@@ -26,7 +26,7 @@
 - Engine and runtime: late log lines from the previous start no longer end up in this start's failure snapshot and diagnostics. When stopping and automatic safe mode happen together, an old Stopping state no longer overwrites the current one. A late refresh after stopping no longer brings back a foreground notification that was already removed. The persistent terminal's readiness checks are no longer thrown off by the system clock jumping.
 - Notifications and video: a notification re-sent after you answered an approval but before the result came back keeps your decision and shows Processing, with no buttons. A late focus-loss callback from an earlier request no longer pauses a video you just resumed.
 - Other fixes: deleting a chat for good also removes the temporary text left by migration. If moving the recent-chat home screen shortcuts fails, the old entry stays and it tries again later (#22). In Agent Team cold recovery, initial input a sub-agent had already taken is no longer marked failed (experimental feature).
-- Chat supports the `deepseek-harness-intelligent-ui` plugin: declarative, widget and composition UIs returned by tools appear as interactive cards in chat, with buttons, forms, tables, charts and questions. Cards create a restricted WebView on demand, load no remote code, and tighten network and link access according to the plugin's client policy. Card text supports long-press selection, tables wrap on phones without claiming horizontal swipes, and content padding is narrower.
+- Chat supports the `deepseek-harness-intelligent-ui` plugin: declarative, widget and composition UIs returned by tools appear as interactive cards in chat, with buttons, forms, tables, charts and questions. Cards create a restricted WebView on demand, load no remote code, and tighten network and link access according to the plugin's client policy. Card text supports long-press selection, tables wrap on phones without claiming horizontal swipes, content padding is narrower, and share cards include the UI content.
 
 ## 1.0.14 · 2026-11-09
 
