@@ -18,6 +18,12 @@
 - Card content uses 0px horizontal padding to make the most of the phone width; the title row keeps `ChatCard`'s 16.
 - Card height is still capped by `maxHeight`; content beyond the cap is clipped by the renderer. An expand entry point can be added later without changing the gesture policy.
 
+## Sharing
+
+- A share card is a Flutter `RepaintBoundary` screenshot, and platform views inside the WebView are not drawn into it. Sharing therefore turns the card's title, text, lists, tables, code, stats, badges and progress into Markdown and puts it next to the reply text.
+- For `ui_render_widget`, only visible HTML text is extracted and no scripts run; interactions and live chart data are not part of the share image.
+- A patched card stays attached to the turn that first showed it (via `originSeq`) and is shared at its latest version, matching the chat.
+
 ## Security boundary
 
 - No remote code is downloaded or executed; the renderer is a fixed asset shipped with the app (`app/assets/intelligent_ui/renderer.js`).
