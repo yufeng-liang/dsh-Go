@@ -11,6 +11,12 @@
 3. 卡片由 `app/lib/ui/chat/intelligent_ui/intelligent_ui_card.dart` 显示：把本地打包的 `assets/intelligent_ui/renderer.js` 内联到带 CSP 的本地 HTML 里，再通过 `postMessage` 桥接 resize、发送、下载和错误。
 4. 工具调用本身仍显示为普通工具行；展开时显示卡片，折叠时卡片留在回合过程之外，和 `dsh-go/view` 工具卡的行为一致。
 
+## 滚动与手势
+
+- 卡片不注册 `EagerGestureRecognizer`。按 Flutter 的手势仲裁规则，纵向拖动由外层聊天列表接管，因此在卡片任意位置上下滑都会滚动聊天页；WebView 只处理未被认领的手势（点击、横向拖动）。
+- 表格、代码块、diff 等横向可滚动区域保留横向拖动，但不再在卡片内部做纵向滚动：移除内部 `max-height`，让卡片按内容自然变高，避免“表格里滑不动、页面也不动”的双重滚动冲突。
+- 卡片高度仍受 `maxHeight` 限制；内容超出上限时由渲染器裁剪，后续可在不改变手势策略的前提下增加展开入口。
+
 ## 安全边界
 
 - 不下载、不执行远端代码；renderer 是随 App 打包的固定版本（`app/assets/intelligent_ui/renderer.js`）。
