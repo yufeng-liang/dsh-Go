@@ -15,6 +15,7 @@ import '../../state/chat_state.dart';
 import '../../update/update_config.dart' show updateRepo;
 import '../chat/dsh_ui/dsh_ui.dart';
 import '../chat/run_info.dart' show formatSpan;
+import 'share_intelligent_ui.dart';
 
 /// The project page every card's QR code and footer point at.
 const dshGoProjectUrl = 'https://github.com/$updateRepo';
@@ -848,7 +849,11 @@ ShareContent shareContentForReply(
     title: shareTitleText(state.title),
     blocks: [
       if (question != null) shareQuestionOf(question, images: images),
-      ShareAnswer(shareMarkdown(reply.text, images: images)),
+      ShareAnswer([
+        shareMarkdown(reply.text, images: images),
+        if (trace != null)
+          ?shareIntelligentUiMarkdown(state.intelligentUis, startSeq: trace.startSeq, endSeq: trace.endSeq),
+      ].where((part) => part.trim().isNotEmpty).join('\n\n\n')),
     ],
     model: reply.model ?? trace?.lastModel.model ?? state.model?.model,
     stats: shareStats(trace),
@@ -891,7 +896,11 @@ ShareContent shareContentForItems(
       for (final item in picked)
         switch (item) {
           final UserChatItem prompt => shareQuestionOf(prompt, images: images),
-          AssistantChatItem(:final text) => ShareAnswer(shareMarkdown(text, images: images)),
+          AssistantChatItem(:final text) => ShareAnswer([
+            shareMarkdown(text, images: images),
+            if (turnOf(state.turns, item.seq) case final trace?)
+              ?shareIntelligentUiMarkdown(state.intelligentUis, startSeq: trace.startSeq, endSeq: trace.endSeq),
+          ].where((part) => part.trim().isNotEmpty).join('\n\n\n')),
           _ => throw StateError('not shareable'),
         },
     ],
