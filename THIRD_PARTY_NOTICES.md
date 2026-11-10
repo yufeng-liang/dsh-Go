@@ -100,6 +100,17 @@ used with the author's permission.
 
 此外，App 中部分组件的结构与行为参照 DeepSeek Harness 的 Web 客户端（MIT），包括消息操作、提及、输入区 dock、回合过程、产物、工作区、终端和定时任务等，不逐文件列出。
 
+### deepseek-harness-intelligent-ui（MIT）
+
+| 项 | 内容 |
+|---|---|
+| 项目 | deepseek-harness-intelligent-ui，https://github.com/dreamfarer-space/deepseek-harness-intelligent-ui （提交 `a009032`，版本 0.2.15） |
+| 版权人 | Copyright (c) 2026 dreamfarer-space |
+| 许可 | MIT |
+| 用途 | 聊天消息中的声明式 / widget / composition 智能 UI 卡片 |
+
+随包资源：`app/assets/intelligent_ui/renderer.js` 原样复制自上游 `renderer/renderer.js`；`app/assets/intelligent_ui/LICENSE` 与 `VERSION` 为上游同一版本的许可与版本说明。客户端侧的 `app/lib/state/intelligent_ui.dart`、`app/lib/ui/chat/intelligent_ui/` 参考并移植了上游 `src/portable/artifacts.js`、`src/compose/compose.js` 与 `renderer-src/` 的投影、校验和桥接结构，按本仓库的 Dart/Flutter 约定重写。上游未修改。
+
 ### DS Bot（Apache-2.0，已修改）
 
 | 项 | 内容 |

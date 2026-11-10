@@ -3024,6 +3024,9 @@
       }
     }
   },
+  "chatIntelligentUiTitle": "智能界面",
+  "chatIntelligentUiActionTitle": "发送界面操作？",
+  "chatIntelligentUiUnavailable": "界面卡片暂不可用",
   "commonCancel": "取消",
   "commonRetry": "重试",
   "commonClose": "关闭",

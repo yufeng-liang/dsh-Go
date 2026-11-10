@@ -12,6 +12,7 @@ import 'attachments.dart';
 import 'chat_error_text.dart';
 import 'connection_state.dart';
 import 'hosts_state.dart';
+import 'intelligent_ui.dart';
 import 'models_state.dart';
 import 'notify_state.dart' show appForegroundProvider;
 import 'run_pulse.dart';
@@ -292,6 +293,7 @@ class ChatState {
     this.todos,
     this.goal,
     this.clockSkew = Duration.zero,
+    this.intelligentUis = const [],
   });
 
   final List<ChatItem> items;
@@ -364,6 +366,10 @@ class ChatState {
   /// on-device engine). Live timers subtract it from `DateTime.now()`.
   final Duration clockSkew;
 
+  /// intelligent-ui 工具事件投影出的卡片；卡片按 tool call id 挂到对应
+  /// ToolCallRow 上（见 chat_rows.dart 的 deriveRows）。
+  final List<IntelligentUiArtifact> intelligentUis;
+
   /// The running turn's trace; null when idle.
   TurnTrace? get runningTurn {
     final last = turns.isEmpty ? null : turns.last;
@@ -399,6 +405,7 @@ class ChatState {
     bool? autoApprove,
     Set<String>? autoAnswered,
     List<CommandNotice>? commands,
+    List<IntelligentUiArtifact>? intelligentUis,
   }) => ChatState(
     items: items,
     running: running,
@@ -426,6 +433,7 @@ class ChatState {
     todos: todos,
     goal: goal,
     clockSkew: clockSkew,
+    intelligentUis: intelligentUis ?? this.intelligentUis,
   );
 }
 
@@ -469,6 +477,8 @@ class ChatController extends Notifier<ChatState> {
   Timer? _stopTimeout;
   _ChatOperation? _stoppingOperation;
   bool _dirty = false;
+  bool _intelligentUiDirty = true;
+  List<IntelligentUiArtifact> _intelligentUis = const [];
   ModelSelection? _model;
   Object? _modelChange;
   bool _defaultModelSaveFailed = false;
@@ -572,10 +582,12 @@ class ChatController extends Notifier<ChatState> {
       _approvalScope = Object();
       _autoApprove = false;
       _autoAnswered = const {};
+      _intelligentUis = const [];
     }
     // Async continuations from the previous build no longer own these marks.
     _modelChange = null;
     _historyRead = null;
+    _intelligentUiDirty = true;
     _moving.clear();
     _synchronized = false;
     _syncScope = Object();
@@ -696,6 +708,7 @@ class ChatController extends Notifier<ChatState> {
     autoApprove: _autoApprove,
     autoAnswered: _autoAnswered,
     clockSkew: _skew ?? Duration.zero,
+    intelligentUis: _intelligentUis,
   );
 
   void _markSyncing({SessionFollowEpoch? epoch, bool building = false}) {
@@ -842,6 +855,12 @@ class ChatController extends Notifier<ChatState> {
             final before = reconcile ? _inboxIds() : const <String>{};
             if (event is SessionSnapshotEvent) _trackSnapshotClaims(event.events);
             final changed = _transcript.apply(event);
+            if (event is SessionSnapshotEvent ||
+                event is ToolCallEvent ||
+                event is ToolResultEvent ||
+                (event is SessionLogEvent && event.type == 'tool/ptc-dispatch')) {
+              _intelligentUiDirty = true;
+            }
             if (_awayLong && !_quiet && _transcript.running) scheduleMicrotask(_quietIfRunning);
             if (reconcile) {
               final removed = before.difference(_inboxIds());
@@ -1179,6 +1198,19 @@ class ChatController extends Notifier<ChatState> {
       _claimedAt.removeWhere((requestId, _) => !pendingIds.contains(requestId));
     }
     final pending = _placePending();
+    if (_intelligentUiDirty) {
+      try {
+        _intelligentUis = IntelligentUiProjector.project(
+          _transcript.events,
+          hostId: ref.read(activeHostProvider).id,
+          sessionId: sessionId,
+        );
+      } catch (_) {
+        // 第三方插件的事件不可信：投影失败时只丢掉卡片，不影响聊天本身。
+        _intelligentUis = const [];
+      }
+      _intelligentUiDirty = false;
+    }
     state = ChatState(
       items: items,
       running: running,
@@ -1206,6 +1238,7 @@ class ChatController extends Notifier<ChatState> {
       todos: _transcript.todos,
       goal: _transcript.goal,
       clockSkew: _skew ?? Duration.zero,
+      intelligentUis: _intelligentUis,
     );
   }
 
@@ -1908,6 +1941,7 @@ class ChatController extends Notifier<ChatState> {
         todos: state.todos,
         goal: state.goal,
         clockSkew: state.clockSkew,
+        intelligentUis: state.intelligentUis,
       );
       return false;
     } finally {
@@ -1944,6 +1978,7 @@ class ChatController extends Notifier<ChatState> {
       if (!current()) return;
       _transcript.prependHistory(page);
       _dropEchoed(page.events);
+      _intelligentUiDirty = true;
       // A done event may have arrived before its run was loaded. Fold the
       // merged log in seq order so paging cannot resurrect a finished command.
       _transcript.events.forEach(_applyCommandEvent);

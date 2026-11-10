@@ -6,6 +6,7 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../../state/intelligent_ui.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/fluid_bits.dart';
 import '../../common/smooth_size.dart';
@@ -13,6 +14,8 @@ import '../../common/tool_glyph.dart';
 import '../../plugins/view/plugin_view.dart' show DshUiParsed, PluginToolCard;
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
+import '../intelligent_ui/intelligent_ui_card.dart';
+import '../render/ansi_text.dart';
 import '../render/code_block.dart';
 import '../render/diff_view.dart';
 import '../render/long_text.dart';
@@ -68,10 +71,19 @@ class ToolRow extends StatefulWidget {
     this.autoAnswered = const {},
     this.onOpenSubagent,
     this.card = ToolCardPlacement.inline,
+    this.uiArtifact,
+    this.onSendPrompt,
   });
 
   final ToolChatItem item;
   final ApprovalResponder onRespond;
+
+  /// intelligent-ui 投影出的卡片；非空时替代插件原生卡片呈现在
+  /// `cardOnly` 位置。
+  final IntelligentUiArtifact? uiArtifact;
+
+  /// 智能 UI 卡里的 `sendPrompt` 动作，交给当前会话发送。
+  final Future<bool> Function(String text)? onSendPrompt;
 
   /// 带原生卡片(`meta["dsh-go/view"]`)时卡片画在哪,见 [ToolCardPlacement]。
   /// 不带卡片的调用不受影响。
@@ -100,7 +112,9 @@ class _ToolRowState extends State<ToolRow> {
   ToolView get view => _view = ToolView.of(widget.item, _view);
 
   bool _expandedFor(ToolView v) =>
-      _toggled ?? (widget.card == ToolCardPlacement.inline && (v.pluginView is DshUiParsed || v.media != null));
+      _toggled ??
+      (widget.card == ToolCardPlacement.inline &&
+          (widget.uiArtifact != null || v.pluginView is DshUiParsed || v.media != null));
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +122,12 @@ class _ToolRowState extends State<ToolRow> {
     // 一轮折叠后:只露卡片本身,工具行收在过程里。
     if (widget.card == ToolCardPlacement.cardOnly) {
       if (v.questionReplies.isNotEmpty) return QuestionReplyCard(replies: v.questionReplies);
+      if (widget.uiArtifact case final artifact?) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: IntelligentUiCard(artifact: artifact, onSendPrompt: widget.onSendPrompt),
+        );
+      }
       if (v.media case final media?) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -138,7 +158,9 @@ class _ToolRowState extends State<ToolRow> {
           expanded: expanded,
           opens: child != null,
           // 卡片正摊开在下面(标题就在卡片上):行里照旧写参数摘要。
-          titled: !(expanded && widget.card == ToolCardPlacement.inline && v.pluginView is DshUiParsed),
+          titled: !(expanded &&
+              widget.card == ToolCardPlacement.inline &&
+              (v.pluginView is DshUiParsed || widget.uiArtifact != null)),
           onTap: () {
             if (child != null && opener!(child)) return;
             setState(() => _toggled = !expanded);
@@ -148,17 +170,24 @@ class _ToolRowState extends State<ToolRow> {
           open: expanded,
           child: Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 8),
-            child: switch (v.pluginView) {
-              // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
-              _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),
-              // 插件工具带了原生卡片(meta["dsh-go/view"]);折进过程里的
-              // 那一行不再画卡片(卡片在外面)。
-              final parse? when widget.card == ToolCardPlacement.inline => PluginToolCard(
-                parse: parse,
-                fallback: ToolDetail(view: v),
-              ),
-              _ => ToolDetail(view: v),
-            },
+            child: widget.uiArtifact != null && widget.card == ToolCardPlacement.inline
+                // intelligent-ui 卡片：流式运行中先直接展示，结束后由折叠
+                // 逻辑把工具行收进过程、卡片留在外面。
+                ? IntelligentUiCard(
+                    artifact: widget.uiArtifact!,
+                    onSendPrompt: widget.onSendPrompt,
+                  )
+                : switch (v.pluginView) {
+                    // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
+                    _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),
+                    // 插件工具带了原生卡片(meta["dsh-go/view"]);折进过程里的
+                    // 那一行不再画卡片(卡片在外面)。
+                    final parse? when widget.card == ToolCardPlacement.inline => PluginToolCard(
+                      parse: parse,
+                      fallback: ToolDetail(view: v),
+                    ),
+                    _ => ToolDetail(view: v),
+                  },
           ),
         ),
         if (widget.card == ToolCardPlacement.inline && v.questionReplies.isNotEmpty)

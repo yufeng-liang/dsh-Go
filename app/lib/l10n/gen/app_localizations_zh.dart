@@ -4690,6 +4690,15 @@ class L10nZh extends L10n {
   }
 
   @override
+  String get chatIntelligentUiTitle => '智能界面';
+
+  @override
+  String get chatIntelligentUiActionTitle => '发送界面操作？';
+
+  @override
+  String get chatIntelligentUiUnavailable => '界面卡片暂不可用';
+
+  @override
   String get commonCancel => '取消';
 
   @override

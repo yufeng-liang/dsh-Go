@@ -11,6 +11,7 @@ The dsh-go app can show a DSH plugin's content with native UI: tool results as c
 | You want | You write | Read |
 |---|---|---|
 | A tool's result as a native card | A view in the tool's `presentationMeta` — 5 minutes | [Quick start](quickstart.md) |
+| Show `deepseek-harness-intelligent-ui` declarative / widget / composition cards | The plugin stays as is; the app projects and renders it | [intelligent-ui cards](intelligent-ui.md) |
 | To see what is native already | Commands, skills, settings forms, dsh-ui cards — no app code | [Native for free](native-for-free.md) |
 | Capsules, reply menu items, a strip, panels | The `dshGo` manifest in `package.json` + `ctx.dshGo` | [Slots](slots.md) |
 | Plus panel tools, chat actions, turn notes | The same manifest, newer places | [Slot reference](slots.md#newer-places) |

@@ -22,6 +22,7 @@ import '../../state/chat_reveal.dart';
 import '../../state/chat_state.dart';
 import '../../state/connection_state.dart';
 import '../../state/hosts_state.dart' show HostKind, activeHostProvider;
+import '../../state/intelligent_ui.dart';
 import '../../state/regenerate.dart';
 import '../../state/sessions_state.dart';
 import '../../state/settings_state.dart';
@@ -346,6 +347,9 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   final Map<String, int> _fresh = {};
 
   // 方法 tear-off 对同一个 State 恒等:子行的回调不会每帧都"变"。
+  Future<bool> _sendUiPrompt(String text) =>
+      ref.read(chatProvider(widget.sessionId).notifier).send(text, mode: SendMode.now);
+
   Future<void> _respond(ApprovalRequest request, ApprovalDecision decision) =>
       ref.read(chatProvider(widget.sessionId).notifier).respond(request, decision);
 
@@ -582,7 +586,12 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   // ---------------------------------------------------------------------------
   // 行与分界
 
-  void _deriveRows(ChatState s, {required bool foldTurns, List<TurnArtifacts> artifacts = const []}) {
+  void _deriveRows(
+    ChatState s, {
+    required bool foldTurns,
+    List<TurnArtifacts> artifacts = const [],
+    List<IntelligentUiArtifact> intelligentUis = const [],
+  }) {
     if (s.loading || !foldTurns) {
       _settling.clear();
     } else {
@@ -613,6 +622,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       s.autoAnswered,
       s.commands,
       s.turns,
+      intelligentUis,
     );
     if (_rowsInputs == inputs) {
       // Nothing the rows are made of changed, but what they read from the
@@ -646,7 +656,12 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     if (oldestTurn != null) _oldestRowSeq = math.min(_oldestRowSeq ?? oldestTurn, oldestTurn);
     final prepended = previousOldest != null && _oldestRowSeq != null && _oldestRowSeq! < previousOldest;
     final hadPending = _rows.any((r) => r is PendingRow);
-    _rows = _rowCache.update(s, foldTurns: foldTurns, artifacts: artifacts);
+    _rows = _rowCache.update(
+      s,
+      foldTurns: foldTurns,
+      artifacts: artifacts,
+      intelligentUis: intelligentUis,
+    );
     _index = _rowCache.index;
     // Only a draft streaming on keeps the other rows' widgets: anything else
     // may change what a row shows beyond its own item (running, pending,
@@ -887,6 +902,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       s,
       foldTurns: ref.watch(settingsProvider.select((s) => s.foldCompletedTurns)),
       artifacts: ref.watch(sessionArtifactsProvider(widget.sessionId)),
+      intelligentUis: s.intelligentUis,
     );
     final rows = _rows;
     final split = _split;
@@ -1411,9 +1427,11 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
         horizontal: 8,
         child: Align(alignment: Alignment.centerLeft, child: _footnote(trace)),
       ),
-      ToolCallRow(:final item, :final card) => ToolRow(
+      ToolCallRow(:final item, :final card, :final uiArtifact) => ToolRow(
         item: item,
         card: card,
+        uiArtifact: uiArtifact,
+        onSendPrompt: _sendUiPrompt,
         onRespond: _respond,
         onAllowAll: _allowAll,
         autoAnswered: _autoAnswered,

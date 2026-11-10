@@ -8612,6 +8612,15 @@ abstract class L10n {
   /// **'{name}，{description}'**
   String chatArtifactSemantics(String name, String description);
 
+  /// No description provided for @chatIntelligentUiTitle.
+  String get chatIntelligentUiTitle;
+
+  /// No description provided for @chatIntelligentUiActionTitle.
+  String get chatIntelligentUiActionTitle;
+
+  /// No description provided for @chatIntelligentUiUnavailable.
+  String get chatIntelligentUiUnavailable;
+
   /// No description provided for @commonCancel.
   ///
   /// In zh, this message translates to:
