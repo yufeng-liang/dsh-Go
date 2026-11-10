@@ -444,7 +444,7 @@ class _Unavailable extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(message, textAlign: TextAlign.center),
-            if (action != null) action!,
+            ?action,
           ],
         ),
       ),

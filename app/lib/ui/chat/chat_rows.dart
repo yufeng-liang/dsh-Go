@@ -224,8 +224,7 @@ List<ChatRow> deriveRows({
   final attached = <String>{};
   final uiByCall = {for (final ui in intelligentUis) ui.uiId: ui};
   final uiBySeq = {
-    for (final ui in intelligentUis)
-      if (ui.originSeq case final seq?) seq: ui,
+    for (final ui in intelligentUis) ?ui.originSeq: ui,
   };
   var tools = <ToolChatItem>[];
   var nextCommand = 0;
