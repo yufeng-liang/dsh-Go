@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,7 +27,9 @@ html,body{padding:0;margin:0;overflow-x:hidden;background:transparent;-webkit-ta
 .diui-remote{padding:2px 0 6px;font-size:13px}
 .diui-compose{display:flex;flex-direction:column;gap:10px;padding:2px 0 8px}
 .diui-compose .diui-md{font-size:13px;line-height:1.5}
-.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior-x:contain;border-radius:8px}
+.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;overscroll-behavior-y:none;border-radius:8px;max-height:none!important;overflow-x:auto!important;overflow-y:hidden!important}
+.diui-md table,.diui-md pre,.diui-code,.diui-problem-detail,.diui-diff-body,.diui-map-list,.diui-tablist{max-height:none!important;overflow-y:visible!important}
+.diui-md table,.diui-md pre,.diui-code,.diui-diff-body,.diui-tablist{overflow-x:auto!important}
 .diui-table th,.diui-table td{padding:8px 12px;font-size:13px}
 .diui-table th{white-space:nowrap;font-weight:600}
 .diui-button,.diui-choice-submit,.diui-table-tools button{min-height:36px;padding:6px 14px;border-radius:8px;touch-action:manipulation;font-size:13px}
@@ -384,10 +385,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         ? const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))
         : SizedBox(
             height: _height.toDouble(),
-            child: WebViewWidget(
-              controller: _controller!,
-              gestureRecognizers: {Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new)},
-            ),
+            // 不设置 gestureRecognizers：Flutter 的默认手势仲裁会让外层
+            // CustomScrollView 接管纵向拖动，WebView 只处理未被认领的
+            // 手势（点击、表格/代码块的横向拖动）。这样在卡片任意位置
+            // 上下滑都会滚动聊天页，而不是被 WebView 吃掉。
+            child: WebViewWidget(controller: _controller!),
           );
     final title = widget.artifact.title?.trim();
     return ChatCard(

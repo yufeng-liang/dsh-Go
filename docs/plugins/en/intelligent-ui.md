@@ -11,6 +11,12 @@
 3. `app/lib/ui/chat/intelligent_ui/intelligent_ui_card.dart` shows the card: it inlines the bundled `assets/intelligent_ui/renderer.js` into local HTML with a strict CSP and bridges resize, prompt, download and error messages over `postMessage`.
 4. The tool call itself remains a normal tool row; the card appears when expanded, and stays outside the folded process in collapsed turns, matching the behaviour of `dsh-go/view` tool cards.
 
+## Scrolling and gestures
+
+- The card does not register an `EagerGestureRecognizer`. Under Flutter's gesture arena, vertical drags stay with the outer chat list, so swiping anywhere on the card scrolls the chat; the WebView only receives gestures nobody else claims (taps and horizontal drags).
+- Horizontally scrollable regions such as tables, code blocks and diffs keep horizontal dragging, but no longer scroll vertically inside the card: internal `max-height` values are removed so the card grows with its content and avoids nested scroll conflicts.
+- Card height is still capped by `maxHeight`; content beyond the cap is clipped by the renderer. An expand entry point can be added later without changing the gesture policy.
+
 ## Security boundary
 
 - No remote code is downloaded or executed; the renderer is a fixed asset shipped with the app (`app/assets/intelligent_ui/renderer.js`).
