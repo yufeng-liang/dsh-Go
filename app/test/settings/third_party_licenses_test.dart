@@ -42,6 +42,7 @@ const _expected = <String, String>{
   'jQuery': 'Copyright OpenJS Foundation and other contributors, https://openjsf.org/',
   'Lodash': 'Copyright OpenJS Foundation and other contributors <https://openjsf.org/>',
   'Streaming Zipformer zh-en (sherpa-onnx)': 'csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20',
+  'deepseek-harness-intelligent-ui': 'Copyright (c) 2026 dreamfarer-space',
 };
 
 const _mit = 'Permission is hereby granted, free of charge';
