@@ -34,6 +34,7 @@ const _expected = <String, String>{
   'Material Icons': 'Google',
   'discourse-emojis': 'Joffrey Jaffeux',
   'JetBrains Mono': 'Copyright 2020 The JetBrains Mono Project Authors',
+  'deepseek-harness-intelligent-ui': 'Copyright (c) 2026 dreamfarer-space',
 };
 
 const _mit = 'Permission is hereby granted, free of charge';
