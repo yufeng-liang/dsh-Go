@@ -22,45 +22,44 @@ IntelligentUiArtifact _card({
 
 void main() {
   test('renders a declarative text card', () {
-    final markdown = shareIntelligentUiMarkdown(
-      [
-        _card(
-          definition: {
-            'root': 'root',
-            'components': [
-              {'id': 'root', 'type': 'text', 'props': {'text': 'Long press this text to select it'}},
-            ],
-          },
-        ),
-      ],
-      startSeq: 1,
-    );
+    final markdown = shareIntelligentUiMarkdown([
+      _card(
+        definition: {
+          'root': 'root',
+          'components': [
+            {
+              'id': 'root',
+              'type': 'text',
+              'props': {'text': 'Long press this text to select it'},
+            },
+          ],
+        },
+      ),
+    ], startSeq: 1);
     expect(markdown, isNotNull);
     expect(markdown, contains('Text Card'));
     expect(markdown, contains('Long press this text to select it'));
   });
 
-
   test('returns card blocks with title and markdown', () {
-    final cards = shareIntelligentUiCards(
-      [
-        _card(
-          definition: {
-            'root': 'root',
-            'components': [
-              {'id': 'root', 'type': 'text', 'props': {'text': 'Hello card'}},
-            ],
-          },
-        ),
-      ],
-      startSeq: 1,
-    );
+    final cards = shareIntelligentUiCards([
+      _card(
+        definition: {
+          'root': 'root',
+          'components': [
+            {
+              'id': 'root',
+              'type': 'text',
+              'props': {'text': 'Hello card'},
+            },
+          ],
+        },
+      ),
+    ], startSeq: 1);
     expect(cards, hasLength(1));
     expect(cards.single.title, 'Text Card');
     expect(cards.single.markdown, contains('Hello card'));
   });
-
-
 
   test('exposes card sources with the tool seq', () {
     final sources = shareIntelligentUiCardSources([
@@ -68,7 +67,11 @@ void main() {
         definition: {
           'root': 'root',
           'components': [
-            {'id': 'root', 'type': 'text', 'props': {'text': 'Hello card'}},
+            {
+              'id': 'root',
+              'type': 'text',
+              'props': {'text': 'Hello card'},
+            },
           ],
         },
       ),
@@ -90,29 +93,30 @@ void main() {
   });
 
   test('renders composition markdown and catalog blocks', () {
-    final markdown = shareIntelligentUiMarkdown(
-      [
-        _card(
-          kind: IntelligentUiKind.composition,
-          title: 'Report',
-          definition: {
-            'title': 'Report',
-            'blocks': [
-              {'id': 'intro', 'type': 'markdown', 'text': 'intro text'},
-              {
-                'id': 'card',
-                'type': 'catalog',
-                'root': 'root',
-                'components': [
-                  {'id': 'root', 'type': 'stat', 'props': {'label': 'Done', 'value': 42}},
-                ],
-              },
-            ],
-          },
-        ),
-      ],
-      startSeq: 1,
-    );
+    final markdown = shareIntelligentUiMarkdown([
+      _card(
+        kind: IntelligentUiKind.composition,
+        title: 'Report',
+        definition: {
+          'title': 'Report',
+          'blocks': [
+            {'id': 'intro', 'type': 'markdown', 'text': 'intro text'},
+            {
+              'id': 'card',
+              'type': 'catalog',
+              'root': 'root',
+              'components': [
+                {
+                  'id': 'root',
+                  'type': 'stat',
+                  'props': {'label': 'Done', 'value': 42},
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    ], startSeq: 1);
     expect(markdown, contains('intro text'));
     expect(markdown, contains('**Done**'));
     expect(markdown, contains('42'));
@@ -125,7 +129,11 @@ void main() {
           definition: {
             'root': 'root',
             'components': [
-              {'id': 'root', 'type': 'text', 'props': {'text': 'not this turn'}},
+              {
+                'id': 'root',
+                'type': 'text',
+                'props': {'text': 'not this turn'},
+              },
             ],
           },
         ),
@@ -134,5 +142,19 @@ void main() {
       endSeq: 20,
     );
     expect(markdown, isNull);
+  });
+
+  test('drops a leading title repeated in the body', () {
+    final sources = shareIntelligentUiCardSources([
+      _card(
+        definition: {
+          'title': 'Typography specimen',
+          'html': '<h1>Typography specimen</h1><p>Typography specimen</p><p>Body text</p>',
+        },
+        kind: IntelligentUiKind.widget,
+        title: 'Typography specimen',
+      ),
+    ]);
+    expect(sources.single.markdown, 'Body text');
   });
 }
