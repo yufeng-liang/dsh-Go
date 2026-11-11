@@ -14,6 +14,7 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 import io.github.ccch1mneyyy.dsh_app.files.FilesPlugin
+import io.github.ccch1mneyyy.dsh_app.intelligentui.IntelligentUiSnapshotPlugin
 import io.github.ccch1mneyyy.dsh_app.launch.LaunchScreen
 import io.github.ccch1mneyyy.dsh_app.launch.LaunchThemeSync
 import io.github.ccch1mneyyy.dsh_app.links.LinksPlugin
@@ -48,6 +49,7 @@ class MainActivity : FlutterActivity() {
             engine.plugins.add(UpdatePlugin())
             engine.plugins.add(VoicePlugin())
             engine.plugins.add(SharePlugin())
+            engine.plugins.add(IntelligentUiSnapshotPlugin())
             engine.plugins.add(ShortcutsPlugin())
             engine.plugins.add(io.github.ccch1mneyyy.dsh_app.diagnostics.DiagnosticsPlugin())
             engine.plugins.add(io.github.ccch1mneyyy.dsh_app.media.MediaPlugin())

@@ -2,6 +2,7 @@
 // conversation, a file or a plugin, in the app's own type and the person's
 // accent colour, with the dsh-go lockup and a QR code to the project page.
 
+import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import '../shell/brand_mark.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import 'qr_code.dart';
+import 'intelligent_ui_snapshot.dart';
 import 'share_content.dart';
 import 'share_gallery.dart';
 import 'share_intelligent_ui.dart';
@@ -870,7 +872,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
     }
     final bodyWidth = width == null ? 320.0 : width! - 32;
     final body = card.widget != null
-        ? ShareWidgetTextView(widget: card.widget!, markdown: card.markdown, width: bodyWidth, title: card.title)
+        ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
         : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -914,6 +916,44 @@ class ShareIntelligentUiCardView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The widget's own pixels in the share card. A WebView in the tree would not
+/// be captured by [RepaintBoundary.toImage]; this is the offscreen Android
+/// renderer's PNG, drawn at the same logical width as the chat card.
+class _SnapshotIntelligentUi extends StatelessWidget {
+  const _SnapshotIntelligentUi({required this.card, required this.width});
+
+  final ShareIntelligentUiCard card;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    return FutureBuilder<Uint8List?>(
+      future: IntelligentUiSnapshot.capture(
+        card: card,
+        width: width,
+        dark: theme.brightness == Brightness.dark,
+        locale: locale,
+      ),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          return ShareWidgetTextView(widget: card.widget!, markdown: card.markdown, width: width, title: card.title);
+        }
+        return Image.memory(
+          bytes,
+          width: width,
+          fit: BoxFit.fitWidth,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+          excludeFromSemantics: true,
+        );
+      },
     );
   }
 }

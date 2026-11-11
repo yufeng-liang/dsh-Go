@@ -1,0 +1,102 @@
+// Renders one intelligent-ui widget in an offscreen Android WebView and
+// returns its PNG. The share card is painted by Flutter, so a WebView in the
+// tree would not be captured by toImage(); a bitmap can be.
+
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
+
+import '../../state/intelligent_ui.dart';
+import '../chat/intelligent_ui/intelligent_ui_card.dart' show buildIntelligentUiHtml;
+import 'share_intelligent_ui.dart';
+
+/// Builds the same bootstrap the live card uses, with the artifact applied
+/// before the page reports that it is ready to be captured.
+String buildIntelligentUiSnapshotHtml({
+  required String rendererCode,
+  required Map<String, Object?> artifact,
+  required bool dark,
+  required String locale,
+}) {
+  final base = buildIntelligentUiHtml(rendererCode: rendererCode, token: 'snapshot');
+  final data = jsonEncode(artifact).replaceAll('<', r'\u003c');
+  final setup =
+      '''
+<script>
+window.__diuiSetTheme(${jsonEncode(dark ? 'dark' : 'light')});
+window.__diuiSetLocale(${jsonEncode(locale)});
+window.__diuiSetArtifact($data);
+setTimeout(function(){
+  if (window.Dsh && window.Dsh.postMessage) {
+    window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));
+  }
+}, 150);
+</script>''';
+  return base.replaceFirst('</body>', '$setup</body>');
+}
+
+/// Paints `ui_render_widget` cards into bitmaps for the share card.
+class IntelligentUiSnapshot {
+  const IntelligentUiSnapshot._();
+
+  static const _channel = MethodChannel('dsh/intelligent_ui_snapshot');
+  static const _maxCache = 16;
+  static final _cache = <String, Future<Uint8List?>>{};
+  static Future<String>? _rendererCode;
+
+  /// The widget's current pixels at [width] logical pixels, or null when the
+  /// platform has no capture channel (tests) or rendering failed.
+  static Future<Uint8List?> capture({
+    required ShareIntelligentUiCard card,
+    required double width,
+    required bool dark,
+    required String locale,
+  }) {
+    final widget = card.widget;
+    if (widget == null || width <= 0) return Future<Uint8List?>.value();
+    final key = '${widget.hashCode}|${width.toStringAsFixed(1)}|$dark|$locale';
+    final cached = _cache[key];
+    if (cached != null) return cached;
+    if (_cache.length >= _maxCache) _cache.remove(_cache.keys.first);
+    final future = _capture(card: card, width: width, dark: dark, locale: locale);
+    _cache[key] = future;
+    return future;
+  }
+
+  static Future<Uint8List?> _capture({
+    required ShareIntelligentUiCard card,
+    required double width,
+    required bool dark,
+    required String locale,
+  }) async {
+    try {
+      final rendererCode = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
+      final widget = card.widget;
+      if (widget == null) return null;
+      final artifact = IntelligentUiArtifact(
+        kind: IntelligentUiKind.widget,
+        hostId: '',
+        sessionId: '',
+        uiId: 'share-${widget.hashCode}',
+        version: 1,
+        definition: widget,
+        seq: 0,
+        title: card.title,
+        policy: const {'maxHeight': 4000},
+      );
+      final html = buildIntelligentUiSnapshotHtml(
+        rendererCode: rendererCode,
+        artifact: artifact.toRendererJson(),
+        dark: dark,
+        locale: locale,
+      );
+      return await _channel.invokeMethod<Uint8List>('capture', {'html': html, 'width': width.round()});
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    } on Object {
+      return null;
+    }
+  }
+}
