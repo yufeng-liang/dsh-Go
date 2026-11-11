@@ -10,6 +10,7 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../share_code/conversation_share.dart';
 import '../../state/settings_state.dart';
 import '../chat/chat_rows.dart';
 import '../chat/dsh_ui/dsh_ui.dart';
@@ -24,6 +25,8 @@ import '../chat/widgets/turn_footnote.dart';
 import '../chat/widgets/turn_process.dart';
 import '../chat/widgets/user_bubble.dart';
 import '../common/bleed.dart';
+import '../share/share_card.dart';
+import '../share/share_intelligent_ui.dart';
 import '../theme/theme.dart';
 import 'replay_frame.dart';
 
@@ -195,6 +198,35 @@ class _ReplayListState extends ConsumerState<ReplayList> {
 
   static Future<void> _noRespond(ApprovalRequest request, ApprovalDecision decision) async {}
 
+  Widget _assistantRow(AssistantChatItem item, bool showActions, TurnTrace? footnote) {
+    final cards = widget.frame.uiBySeq[item.seq] ?? const <ConversationUiCard>[];
+    final message = DshUiScope(
+      sessionId: replaySessionId,
+      messageId: item.id,
+      state: DshUiState.expired,
+      child: AssistantMessage(
+        item: item,
+        showActions: showActions,
+        footnote: footnote == null ? null : TurnFootnote(trace: footnote),
+      ),
+    );
+    if (cards.isEmpty) return message;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        message,
+        for (final card in cards)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: ShareIntelligentUiCardView(
+              ShareIntelligentUiCard(title: card.title, markdown: card.markdown),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _rowWidget(ChatRow row) {
     return switch (row) {
       UserRow(:final item) when dshUiReplyChip(item.text) != null => DshUiReplyChip(label: dshUiReplyChip(item.text)!),
@@ -205,16 +237,7 @@ class _ReplayListState extends ConsumerState<ReplayList> {
             : SentAttachments.echoed(sessionId: replaySessionId, images: item.images, files: item.files),
       ),
       PendingRow() => const SizedBox.shrink(),
-      AssistantRow(:final item, :final showActions, :final footnote) => DshUiScope(
-        sessionId: replaySessionId,
-        messageId: item.id,
-        state: DshUiState.expired,
-        child: AssistantMessage(
-          item: item,
-          showActions: showActions,
-          footnote: footnote == null ? null : TurnFootnote(trace: footnote),
-        ),
-      ),
+      AssistantRow(:final item, :final showActions, :final footnote) => _assistantRow(item, showActions, footnote),
       TurnFootnoteRow(:final trace) => Bleed(
         horizontal: 8,
         child: Align(

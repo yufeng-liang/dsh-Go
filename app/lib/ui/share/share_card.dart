@@ -542,7 +542,7 @@ class _Body extends StatelessWidget {
   Widget _block(ShareBlock block, double width) => switch (block) {
     final ShareQuestion q => _Question(q, width: width),
     ShareAnswer(:final markdown) => _Answer(markdown, width: width),
-    final ShareIntelligentUi ui => _IntelligentUi(ui.card, width: width),
+    final ShareIntelligentUi ui => ShareIntelligentUiCardView(ui.card, width: width),
     final ShareFile file => _File(file),
     final SharePlugin plugin => _Plugin(plugin),
   };
@@ -828,11 +828,13 @@ class ShareCodeWell extends StatelessWidget {
 }
 
 /// An intelligent-ui card on a share card: a native frame, not the live WebView.
-class _IntelligentUi extends StatelessWidget {
-  const _IntelligentUi(this.card, {required this.width});
+/// The share card's native frame for one intelligent-ui card. Public so the
+/// replay page can draw the same card when viewing a share link.
+class ShareIntelligentUiCardView extends StatelessWidget {
+  const ShareIntelligentUiCardView(this.card, {this.width});
 
   final ShareIntelligentUiCard card;
-  final double width;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -877,7 +879,7 @@ class _IntelligentUi extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            _Answer(card.markdown, width: width - 32),
+            _Answer(card.markdown, width: width == null ? 320 : width! - 32),
           ],
         ),
       ),
