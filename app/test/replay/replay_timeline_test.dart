@@ -104,6 +104,25 @@ void main() {
     expect(end.turns.last.startSeq, lessThan(second.seq));
   });
 
+  test('reply ui cards travel with their reply in the replay frame', () {
+    final share = ConversationShare(
+      title: 'cards',
+      start: DateTime.utc(2026, 11, 11),
+      entries: [
+        const ReplyEntry(
+          t: 100,
+          text: 'answer',
+          ui: [ConversationUiCard(title: 'Text Card', markdown: 'Long press this text')],
+        ),
+      ],
+    );
+    final frame = ReplayFrames(share).end;
+    final cards = frame.uiBySeq[ReplayFrames.seqOf(0)];
+    expect(cards, hasLength(1));
+    expect(cards!.single.title, 'Text Card');
+    expect(cards.single.markdown, 'Long press this text');
+  });
+
   test('the fixture the web viewer is checked against', () async {
     final share = _share();
     final png = Uint8List.fromList(
