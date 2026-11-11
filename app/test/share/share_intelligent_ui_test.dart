@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dsh_app/state/intelligent_ui.dart';
+import 'package:dsh_app/ui/share/share_content.dart';
 import 'package:dsh_app/ui/share/share_intelligent_ui.dart';
 
 IntelligentUiArtifact _card({
@@ -37,6 +38,37 @@ void main() {
     expect(markdown, isNotNull);
     expect(markdown, contains('Text Card'));
     expect(markdown, contains('Long press this text to select it'));
+  });
+
+
+  test('returns card blocks with title and markdown', () {
+    final cards = shareIntelligentUiCards(
+      [
+        _card(
+          definition: {
+            'root': 'root',
+            'components': [
+              {'id': 'root', 'type': 'text', 'props': {'text': 'Hello card'}},
+            ],
+          },
+        ),
+      ],
+      startSeq: 1,
+    );
+    expect(cards, hasLength(1));
+    expect(cards.single.title, 'Text Card');
+    expect(cards.single.markdown, contains('Hello card'));
+  });
+
+
+  test('lays out UI cards among question and answer blocks', () {
+    final layout = layoutShareBlocks([
+      const ShareQuestion('hello'),
+      const ShareIntelligentUi(ShareIntelligentUiCard(title: 'Text Card', markdown: 'body')),
+      const ShareAnswer('answer'),
+    ]);
+    expect(layout.truncated, isFalse);
+    expect(layout.blocks.map((b) => b.runtimeType), [ShareQuestion, ShareIntelligentUi, ShareAnswer]);
   });
 
   test('renders composition markdown and catalog blocks', () {

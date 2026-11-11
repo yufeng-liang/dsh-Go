@@ -17,19 +17,42 @@ String? shareIntelligentUiMarkdown(
   required int startSeq,
   int? endSeq,
 }) {
+  final cards = shareIntelligentUiCards(artifacts, startSeq: startSeq, endSeq: endSeq);
+  if (cards.isEmpty) return null;
+  return cards
+      .map((card) => card.title == null ? card.markdown : '**${card.title}**\n\n${card.markdown}')
+      .join('\n\n');
+}
+
+/// One UI card as it goes on a share card: an optional title and Markdown.
+class ShareIntelligentUiCard {
+  const ShareIntelligentUiCard({this.title, required this.markdown});
+
+  final String? title;
+  final String markdown;
+}
+
+/// The UI cards that belong to [turn]'s seq range, latest version per UI id.
+///
+/// Patches keep the original [IntelligentUiArtifact.originSeq], so a card
+/// updated later still belongs to the turn that first showed it.
+List<ShareIntelligentUiCard> shareIntelligentUiCards(
+  Iterable<IntelligentUiArtifact> artifacts, {
+  required int startSeq,
+  int? endSeq,
+}) {
   final cards = <IntelligentUiArtifact>[
     for (final ui in artifacts)
       if (ui.originSeq case final seq? when seq >= startSeq && (endSeq == null || seq <= endSeq)) ui,
   ]..sort((a, b) => (a.originSeq ?? 0).compareTo(b.originSeq ?? 0));
-  if (cards.isEmpty) return null;
-  final parts = <String>[];
+  final out = <ShareIntelligentUiCard>[];
   for (final card in cards) {
     final body = _bodyOf(card).trim();
     if (body.isEmpty) continue;
     final title = (card.title ?? '').trim();
-    parts.add(title.isEmpty ? body : '**$title**\n\n$body');
+    out.add(ShareIntelligentUiCard(title: title.isEmpty ? null : title, markdown: body));
   }
-  return parts.isEmpty ? null : parts.join('\n\n');
+  return out;
 }
 
 String _bodyOf(IntelligentUiArtifact ui) => switch (ui.kind) {

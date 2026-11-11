@@ -20,6 +20,7 @@ import '../theme/theme.dart';
 import 'qr_code.dart';
 import 'share_content.dart';
 import 'share_gallery.dart';
+import 'share_intelligent_ui.dart';
 
 /// The card's look. Every template draws the same content.
 enum ShareTemplate {
@@ -514,6 +515,8 @@ class _Body extends StatelessWidget {
         (null, _) => 28,
         (ShareQuestion(), ShareAnswer()) => 14,
         (ShareAnswer(), ShareQuestion()) => 36,
+        (ShareAnswer(), ShareIntelligentUi()) => 14,
+        (ShareIntelligentUi(), ShareAnswer()) => 24,
         _ => 24,
       });
       children.add(_block(block, width));
@@ -539,6 +542,7 @@ class _Body extends StatelessWidget {
   Widget _block(ShareBlock block, double width) => switch (block) {
     final ShareQuestion q => _Question(q, width: width),
     ShareAnswer(:final markdown) => _Answer(markdown, width: width),
+    final ShareIntelligentUi ui => _IntelligentUi(ui.card, width: width),
     final ShareFile file => _File(file),
     final SharePlugin plugin => _Plugin(plugin),
   };
@@ -816,6 +820,64 @@ class ShareCodeWell extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Text.rich(highlightCode(code.trimRight(), language, theme.brightness, style: style)),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An intelligent-ui card on a share card: a native frame, not the live WebView.
+class _IntelligentUi extends StatelessWidget {
+  const _IntelligentUi(this.card, {required this.width});
+
+  final ShareIntelligentUiCard card;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: AppShape.radiusLg,
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7), width: 0.8),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(AppIcons.generating, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  appL10n.chatIntelligentUiTitle,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+            if (card.title case final title?) ...[
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            _Answer(card.markdown, width: width - 32),
           ],
         ),
       ),
