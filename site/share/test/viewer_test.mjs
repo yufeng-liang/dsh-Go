@@ -52,6 +52,21 @@ await test('replay schedule matches the app', async () => {
   assert.ok(Math.abs(plan.duration - want.duration) < 1e-6);
 });
 
+await test('a reply carries its intelligent-ui cards', async () => {
+  const conv = V.readConversation({
+    v: 2,
+    kind: 'conversation',
+    schema: 1,
+    start: '2026-01-01T00:00:00.000Z',
+    entries: [
+      { type: 'reply', t: 0, text: 'answer', ui: [{ title: 'Text Card', md: 'Long press this text' }] },
+      { type: 'reply', t: 1, text: 'plain' }
+    ]
+  });
+  assert.deepEqual(conv.entries[0].ui, [{ title: 'Text Card', md: 'Long press this text' }]);
+  assert.deepEqual(conv.entries[1].ui, []);
+});
+
 await test('a tampered file or picture is refused', async () => {
   const env = JSON.parse(fixture.file);
   const code = env.code;
