@@ -9,6 +9,8 @@ import 'package:flutter/rendering.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_info.dart';
+import '../../state/intelligent_ui.dart';
+import '../chat/intelligent_ui/intelligent_ui_card.dart';
 import '../chat/render/code_block.dart' show highlightCode;
 import '../chat/render/markdown_body.dart';
 import '../common/tool_glyph.dart' show ToolGlyphs;
@@ -834,10 +836,15 @@ class ShareCodeWell extends StatelessWidget {
 /// The share card's native frame for one intelligent-ui card. Public so the
 /// replay page can draw the same card when viewing a share link.
 class ShareIntelligentUiCardView extends StatelessWidget {
-  const ShareIntelligentUiCardView(this.card, {super.key, this.width});
+  const ShareIntelligentUiCardView(this.card, {super.key, this.width, this.allowWebView = false});
 
   final ShareIntelligentUiCard card;
   final double? width;
+
+  /// The live replay page can redraw a `ui_render_widget` card in a read-only
+  /// WebView for full typography fidelity. The share image cannot: platform
+  /// views are not captured by `toImage`, so it keeps the Markdown fallback.
+  final bool allowWebView;
 
   @override
   Widget build(BuildContext context) {
@@ -871,18 +878,33 @@ class ShareIntelligentUiCardView extends StatelessWidget {
                 ),
               ],
             ),
-            if (card.title case final title?) ...[
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface,
+            if (card.widget case final widget? when allowWebView) ...[
+              const SizedBox(height: 8),
+              IntelligentUiCard(
+                artifact: IntelligentUiArtifact(
+                  kind: IntelligentUiKind.widget,
+                  hostId: '',
+                  sessionId: '',
+                  uiId: 'share-${widget['html'].hashCode}',
+                  version: 1,
+                  definition: widget,
+                  seq: 0,
+                  title: card.title,
+                  policy: const {'maxHeight': 4000},
                 ),
+                readOnly: true,
               ),
+            ] else ...[
+              if (card.title case final title?) ...[
+                const SizedBox(height: 10),
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurface),
+                ),
+              ],
+              const SizedBox(height: 8),
+              _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
             ],
-            const SizedBox(height: 8),
-            _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
           ],
         ),
       ),

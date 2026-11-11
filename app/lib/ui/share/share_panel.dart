@@ -353,7 +353,11 @@ class SharePanelModel extends ChangeNotifier {
   SharePrivacy get privacy => _privacy;
 
   /// The scopes this conversation offers: 「这条回复」 only with a reply.
-  List<ShareScope> get scopes => [if (conversation?.reply != null) ShareScope.reply, ShareScope.picked, ShareScope.whole];
+  List<ShareScope> get scopes => [
+    if (conversation?.reply != null) ShareScope.reply,
+    ShareScope.picked,
+    ShareScope.whole,
+  ];
 
   /// What 「选中消息」 starts with: the picks so far, else the reply and its
   /// question, else the last exchange.
@@ -422,13 +426,7 @@ class SharePanelModel extends ChangeNotifier {
     final state = chat;
     final reply = anchor;
     if (_scope == ShareScope.reply && reply != null) {
-      return shareContentForReply(
-        state,
-        reply,
-        sessionId: _sessionId,
-        images: _privacy.images,
-        tools: _privacy.tools,
-      );
+      return shareContentForReply(state, reply, sessionId: _sessionId, images: _privacy.images, tools: _privacy.tools);
     }
     return shareContentForItems(state, keys, sessionId: _sessionId, images: _privacy.images, tools: _privacy.tools);
   }
@@ -442,9 +440,7 @@ class SharePanelModel extends ChangeNotifier {
         if (keys.contains(item.key)) item,
     ];
     final whole = _scope == ShareScope.whole;
-    final turns = {
-      for (final reply in picked.whereType<AssistantChatItem>()) ?turnOf(state.turns, reply.seq),
-    };
+    final turns = {for (final reply in picked.whereType<AssistantChatItem>()) ?turnOf(state.turns, reply.seq)};
     var tools = 0;
     if (_privacy.tools) {
       for (final item in state.items) {
@@ -580,12 +576,12 @@ class SharePanelModel extends ChangeNotifier {
   /// Intelligent-ui cards, keyed by the last reply seq of the turn that first
   /// showed them. A share file has no WebView, so the viewer draws the card
   /// from the artifact's Markdown instead.
-  List<({int seq, String? title, String markdown})> _uiCards(
+  List<({int seq, String? title, String markdown, Map<String, Object?>? widget})> _uiCards(
     List<ChatItem> items,
     List<TurnTrace> turns,
     List<IntelligentUiArtifact> artifacts,
   ) {
-    final out = <({int seq, String? title, String markdown})>[];
+    final out = <({int seq, String? title, String markdown, Map<String, Object?>? widget})>[];
     for (final card in shareIntelligentUiCardSources(artifacts)) {
       final trace = turns
           .where((t) => t.startSeq <= card.originSeq && (t.endSeq == null || card.originSeq <= t.endSeq!))
@@ -604,7 +600,7 @@ class SharePanelModel extends ChangeNotifier {
           .lastOrNull
           ?.seq;
       if (replySeq == null) continue;
-      out.add((seq: replySeq, title: card.title, markdown: card.markdown));
+      out.add((seq: replySeq, title: card.title, markdown: card.markdown, widget: card.widget));
     }
     return out;
   }

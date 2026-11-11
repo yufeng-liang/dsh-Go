@@ -288,19 +288,39 @@ final class ReplyEntry extends ConversationEntry {
 /// has no sandboxed renderer can draw it.
 @immutable
 class ConversationUiCard {
-  const ConversationUiCard({this.title, required this.markdown});
+  const ConversationUiCard({this.title, required this.markdown, this.widget});
 
   static ConversationUiCard? fromJson(Object? json) {
     if (json is! Map) return null;
     final markdown = _str(json['md'], _maxUiMarkdown);
     if (markdown == null || markdown.isEmpty) return null;
-    return ConversationUiCard(title: _str(json['title'], 120), markdown: markdown);
+    return ConversationUiCard(
+      title: _str(json['title'], 120),
+      markdown: markdown,
+      widget: _widgetDefinition(json['widget']),
+    );
   }
 
   final String? title;
   final String markdown;
 
-  Map<String, Object?> toJson() => {'title': ?title, 'md': markdown};
+  /// A `ui_render_widget` definition (html/css only), when this card can be
+  /// replayed at full fidelity in a read-only WebView.
+  final Map<String, Object?>? widget;
+
+  Map<String, Object?> toJson() => {'title': ?title, 'md': markdown, if (widget != null) 'widget': widget};
+}
+
+const _maxUiWidget = 200 * 1000;
+
+Map<String, Object?>? _widgetDefinition(Object? json) {
+  if (json is! Map) return null;
+  final html = json['html'];
+  final css = json['css'];
+  if (html is! String || html.isEmpty || html.length > _maxUiWidget) return null;
+  if (css != null && (css is! String || css.length > _maxUiWidget)) return null;
+  if (html.contains(RegExp(r'<script[\s>]', caseSensitive: false))) return null;
+  return {'html': html, if (css is String && css.isNotEmpty) 'css': css};
 }
 
 final class ToolEntry extends ConversationEntry {
