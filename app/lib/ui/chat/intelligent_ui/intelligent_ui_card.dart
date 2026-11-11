@@ -115,6 +115,9 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
 ''';
 }
 
+/// Lets a widget's grid/flex children shrink to the card width.
+const _widgetFitCss = '*{box-sizing:border-box!important;min-width:0!important}';
+
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({super.key, required this.artifact, this.onSendPrompt, this.readOnly = false});
 
@@ -251,7 +254,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final controller = _controller;
     if (controller == null) return;
     // 与 remote 一致：即使插件策略允许，卡片也不给它网络、CDN 或外链权限。
-    final artifact = widget.artifact.toRendererJson();
+    final artifact = _renderArtifact(widget.artifact);
     final rawPolicy = artifact['policy'];
     final policy = <String, Object?>{
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
@@ -261,6 +264,18 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
+  }
+
+  Map<String, Object?> _renderArtifact(IntelligentUiArtifact card) {
+    final json = card.toRendererJson();
+    if (card.kind != IntelligentUiKind.widget) return json;
+    final definition = json['definition'];
+    if (definition is! Map) return json;
+    final css = definition['css'];
+    return {
+      ...json,
+      'definition': {...definition.cast<String, Object?>(), 'css': '${css is String ? css : ''}\n$_widgetFitCss'},
+    };
   }
 
   void _setTheme(bool dark) {
