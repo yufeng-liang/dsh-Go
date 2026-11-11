@@ -20,6 +20,7 @@ class ReplayFrame {
     required this.goal,
     required this.running,
     required this.visible,
+    this.uiBySeq = const {},
   });
 
   final List<ChatItem> items;
@@ -37,6 +38,9 @@ class ReplayFrame {
 
   /// How many entries have appeared.
   final int visible;
+
+  /// Intelligent-ui cards shown under a reply, by its seq.
+  final Map<int, List<ConversationUiCard>> uiBySeq;
 }
 
 /// Builds [ReplayFrame]s of one conversation. Finished parts are built once
@@ -64,6 +68,7 @@ class ReplayFrames {
     final items = <ChatItem>[];
     final commands = <CommandNotice>[];
     final turns = <TurnTrace>[];
+    final uiBySeq = <int, List<ConversationUiCard>>{};
     List<TodoItem>? todos;
     GoalEntry? goal;
     var running = false;
@@ -84,6 +89,7 @@ class ReplayFrames {
           items.add(
             done ? (_done[i] ??= _reply(i, entry, beat, time, done: true)) : _reply(i, entry, beat, time, done: false),
           );
+          if (done && entry.ui.isNotEmpty) uiBySeq[seqOf(i)] = entry.ui;
         case ToolEntry():
           items.add(done ? (_done[i] ??= _tool(i, entry, done: true)) : _tool(i, entry, done: false));
         case NoticeEntry():
@@ -104,6 +110,7 @@ class ReplayFrames {
       goal: goal,
       running: running,
       visible: visible,
+      uiBySeq: uiBySeq,
     );
   }
 
