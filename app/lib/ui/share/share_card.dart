@@ -838,6 +838,29 @@ class ShareCodeWell extends StatelessWidget {
 /// An intelligent-ui card on a share card: a native frame, not the live WebView.
 /// The share card's native frame for one intelligent-ui card. Public so the
 /// replay page can draw the same card when viewing a share link.
+
+IntelligentUiArtifact _shareArtifact(ShareIntelligentUiCard card) {
+  final payload = card.artifact;
+  final kindName = payload?['kind'] as String? ?? 'widget';
+  final kind = IntelligentUiKind.values.firstWhere(
+    (value) => value.name == kindName,
+    orElse: () => IntelligentUiKind.widget,
+  );
+  final definition = payload?['definition'] as Map? ?? card.widget ?? const <String, Object?>{};
+  final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
+  return IntelligentUiArtifact(
+    kind: kind,
+    hostId: '',
+    sessionId: '',
+    uiId: 'share-${definition.hashCode}',
+    version: 1,
+    definition: Map<String, Object?>.from(definition),
+    seq: 0,
+    title: card.title,
+    policy: Map<String, Object?>.from(policy),
+  );
+}
+
 class ShareIntelligentUiCardView extends StatelessWidget {
   const ShareIntelligentUiCardView(this.card, {super.key, this.width, this.allowWebView = false});
 
@@ -854,24 +877,11 @@ class ShareIntelligentUiCardView extends StatelessWidget {
     // A widget card keeps its real chat-card shell: the live card is the most
     // faithful replay and already carries the same title, padding and 13px
     // WebView typography as the chat list.
-    if (card.widget case final widget? when allowWebView) {
-      return IntelligentUiCard(
-        artifact: IntelligentUiArtifact(
-          kind: IntelligentUiKind.widget,
-          hostId: '',
-          sessionId: '',
-          uiId: 'share-${widget['html'].hashCode}',
-          version: 1,
-          definition: widget,
-          seq: 0,
-          title: card.title,
-          policy: const {'maxHeight': 4000},
-        ),
-        readOnly: true,
-      );
+    if (allowWebView && (card.artifact != null || card.widget != null)) {
+      return IntelligentUiCard(artifact: _shareArtifact(card), readOnly: true);
     }
     final bodyWidth = width == null ? 320.0 : width! - 32;
-    final body = card.widget != null
+    final body = (card.artifact != null || card.widget != null)
         ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
         : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
     final theme = Theme.of(context);
@@ -943,7 +953,10 @@ class _SnapshotIntelligentUi extends StatelessWidget {
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null) {
-          return ShareWidgetTextView(widget: card.widget!, markdown: card.markdown, width: width, title: card.title);
+          if (card.widget case final widget?) {
+            return ShareWidgetTextView(widget: widget, markdown: card.markdown, width: width, title: card.title);
+          }
+          return _Answer(card.markdown, width: width, scale: 13 / 16);
         }
         return Image.memory(
           bytes,

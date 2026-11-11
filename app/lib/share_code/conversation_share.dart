@@ -288,7 +288,7 @@ final class ReplyEntry extends ConversationEntry {
 /// has no sandboxed renderer can draw it.
 @immutable
 class ConversationUiCard {
-  const ConversationUiCard({this.title, required this.markdown, this.widget});
+  const ConversationUiCard({this.title, required this.markdown, this.widget, this.artifact});
 
   static ConversationUiCard? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -298,6 +298,7 @@ class ConversationUiCard {
       title: _str(json['title'], 120),
       markdown: markdown,
       widget: _widgetDefinition(json['widget']),
+      artifact: _artifactDefinition(json['artifact']),
     );
   }
 
@@ -308,10 +309,21 @@ class ConversationUiCard {
   /// replayed at full fidelity in a read-only WebView.
   final Map<String, Object?>? widget;
 
-  Map<String, Object?> toJson() => {'title': ?title, 'md': markdown, if (widget != null) 'widget': widget};
+  /// A full renderer artifact for cards that are not plain widgets
+  /// (`ui_render` / `ui_compose`). The share page can replay it in a sandboxed
+  /// WebView, so complex cards keep their layout, charts and tables.
+  final Map<String, Object?>? artifact;
+
+  Map<String, Object?> toJson() => {
+    'title': ?title,
+    'md': markdown,
+    if (widget != null) 'widget': widget,
+    if (artifact != null) 'artifact': artifact,
+  };
 }
 
 const _maxUiWidget = 200 * 1000;
+const _maxUiArtifact = 480 * 1000;
 
 Map<String, Object?>? _widgetDefinition(Object? json) {
   if (json is! Map) return null;
@@ -321,6 +333,22 @@ Map<String, Object?>? _widgetDefinition(Object? json) {
   if (css != null && (css is! String || css.length > _maxUiWidget)) return null;
   if (html.contains(RegExp(r'<script[\s>]', caseSensitive: false))) return null;
   return {'html': html, if (css is String && css.isNotEmpty) 'css': css};
+}
+
+Map<String, Object?>? _artifactDefinition(Object? json) {
+  if (json is! Map) return null;
+  final kind = json['kind'];
+  final definition = json['definition'];
+  if (kind is! String || definition is! Map) return null;
+  if (kind != 'declarative' && kind != 'widget' && kind != 'composition') return null;
+  if (jsonEncode(json).length > _maxUiArtifact) return null;
+  final policy = json['policy'];
+  return {
+    'kind': kind,
+    'definition': Map<String, Object?>.from(definition),
+    if (json['title'] is String) 'title': json['title'],
+    if (policy is Map) 'policy': Map<String, Object?>.from(policy),
+  };
 }
 
 final class ToolEntry extends ConversationEntry {

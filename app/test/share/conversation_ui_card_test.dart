@@ -23,6 +23,35 @@ void main() {
     expect(again!.widget, {'html': '<p style="font-family: serif">serif</p>', 'css': 'p{font-size:20px}'});
   });
 
+  test('round-trips a full artifact for complex cards', () {
+    const card = ConversationUiCard(
+      title: 'Dashboard',
+      markdown: 'body',
+      artifact: {
+        'kind': 'composition',
+        'definition': {
+          'title': 'Dashboard',
+          'blocks': [
+            {'id': 'intro', 'type': 'markdown', 'text': 'intro'},
+          ],
+        },
+        'policy': {'maxHeight': 2400},
+      },
+    );
+    final again = ConversationUiCard.fromJson(card.toJson());
+    expect(again, isNotNull);
+    expect(again!.artifact, card.artifact);
+  });
+
+  test('rejects a malformed artifact for complex cards', () {
+    final card = ConversationUiCard.fromJson({
+      'md': 'body',
+      'artifact': {'kind': 'unknown', 'definition': <String, Object?>{}},
+    });
+    expect(card, isNotNull);
+    expect(card!.artifact, isNull);
+  });
+
   test('rejects a widget definition with a script tag', () {
     final card = ConversationUiCard.fromJson({
       'md': 'body',
