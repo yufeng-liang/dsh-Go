@@ -137,6 +137,16 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
             }
             web.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+                override fun onPageFinished(view: WebView, url: String?) {
+                    // The renderer mounts synchronously in the document, so the
+                    // page being finished is enough to measure it. The JS
+                    // `captureReady` message is only a faster path: a very
+                    // large widget can keep the renderer's main thread busy
+                    // past the message budget.
+                    main.postDelayed({
+                        if (!done.get()) measureAndDraw(pxWidth, density)
+                    }, PAGE_SETTLE_MS)
+                }
                 override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                     finish(null)
                     return true
@@ -155,7 +165,10 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 },
                 "Dsh",
             )
-            frame.addView(web, FrameLayout.LayoutParams(pxWidth, 1))
+            // Lay out at a plausible card height while loading. A 1px viewport
+            // makes the renderer's ResizeObserver see a nearly empty page and
+            // can send widgets with viewport-relative layout into a resize loop.
+            frame.addView(web, FrameLayout.LayoutParams(pxWidth, INITIAL_HEIGHT_PX))
             web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
             main.postDelayed(timeout, TIMEOUT_MS)
         }
@@ -236,8 +249,10 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
     companion object {
         private const val TAG = "IntelligentUiSnapshot"
         private const val CHANNEL = "dsh/intelligent_ui_snapshot"
-        private const val TIMEOUT_MS = 8000L
-        private const val DRAW_DELAY_MS = 120L
+        private const val TIMEOUT_MS = 20000L
+        private const val DRAW_DELAY_MS = 200L
+        private const val PAGE_SETTLE_MS = 900L
+        private const val INITIAL_HEIGHT_PX = 1600
         private const val MAX_PX_HEIGHT = 12000
     }
 }
