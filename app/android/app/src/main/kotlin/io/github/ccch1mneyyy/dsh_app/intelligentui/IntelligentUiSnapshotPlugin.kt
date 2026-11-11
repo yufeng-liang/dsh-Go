@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -78,6 +79,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 }
                 val activity = activity
                 if (activity == null) {
+                    Log.w(TAG, "capture rejected: no activity")
                     result.error("no_activity", "The app is not attached to an activity", null)
                     return
                 }
@@ -100,12 +102,17 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private val done = AtomicBoolean(false)
         private val web = WebView(activity)
         private var holder: FrameLayout? = null
-        private val timeout = Runnable { finish(null) }
+        private var failure: String? = null
+        private val timeout = Runnable {
+            failure = "timeout"
+            finish(null)
+        }
 
         fun start() {
             val density = activity.resources.displayMetrics.density
             val pxWidth = (logicalWidth * density).roundToInt().coerceIn(120, 2400)
-            val parent = activity.findViewById<ViewGroup>(android.R.id.content) ?: return finish(null)
+            val parent = activity.findViewById<ViewGroup>(android.R.id.content)
+            if (parent == null) return fail("no content view")
             val frame = FrameLayout(activity).apply {
                 alpha = 0f
                 translationX = -10000f
@@ -156,7 +163,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private fun measureAndDraw(pxWidth: Int, density: Float) {
             web.evaluateJavascript("Math.ceil(document.documentElement.scrollHeight)") { value ->
                 val cssHeight = value?.trim()?.trim('"')?.toFloatOrNull()
-                if (cssHeight == null || cssHeight <= 0f) return@evaluateJavascript finish(null)
+                if (cssHeight == null || cssHeight <= 0f) return@evaluateJavascript fail("bad scrollHeight: $value")
                 val pxHeight = (ceil(cssHeight.toDouble() * density).toInt()).coerceIn(1, MAX_PX_HEIGHT)
                 val params = web.layoutParams as FrameLayout.LayoutParams
                 params.height = pxHeight
@@ -176,8 +183,8 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private fun draw(width: Int, height: Int) {
             val bitmap = try {
                 Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            } catch (_: Throwable) {
-                return finish(null)
+            } catch (error: Throwable) {
+                return fail("bitmap create failed: $error")
             }
             try {
                 val canvas = Canvas(bitmap)
@@ -186,11 +193,16 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 val output = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
                 finish(output.toByteArray())
-            } catch (_: Throwable) {
-                finish(null)
+            } catch (error: Throwable) {
+                fail("draw failed: $error")
             } finally {
                 bitmap.recycle()
             }
+        }
+
+        private fun fail(reason: String) {
+            failure = reason
+            finish(null)
         }
 
         fun finish(bytes: ByteArray?) {
@@ -204,7 +216,13 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
             }
             holder?.let { (it.parent as? ViewGroup)?.removeView(it) }
             holder = null
-            if (bytes == null) result.error("capture_failed", "Could not render the UI card", null) else result.success(bytes)
+            if (bytes == null) {
+                Log.w(TAG, "capture failed: ${failure ?: "unknown"}")
+                result.error("capture_failed", "Could not render the UI card", null)
+            } else {
+                Log.i(TAG, "capture ok: ${bytes.size} bytes")
+                result.success(bytes)
+            }
         }
 
         private fun runCatching(block: () -> Unit) {
@@ -216,6 +234,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
     }
 
     companion object {
+        private const val TAG = "IntelligentUiSnapshot"
         private const val CHANNEL = "dsh/intelligent_ui_snapshot"
         private const val TIMEOUT_MS = 8000L
         private const val DRAW_DELAY_MS = 120L

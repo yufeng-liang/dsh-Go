@@ -43,7 +43,7 @@ List<ShareIntelligentUiCard> shareIntelligentUiCards(
   return [
     for (final card in shareIntelligentUiCardSources(artifacts))
       if (card.originSeq >= startSeq && (endSeq == null || card.originSeq <= endSeq))
-        ShareIntelligentUiCard(title: card.title, markdown: card.markdown, widget: card.widget),
+        ShareIntelligentUiCard(title: card.title, markdown: card.markdown, widget: card.widget, artifact: card.artifact),
   ];
 }
 

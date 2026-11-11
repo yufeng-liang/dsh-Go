@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../state/intelligent_ui.dart';
@@ -97,11 +98,14 @@ class IntelligentUiSnapshot {
         locale: locale,
       );
       return await _channel.invokeMethod<Uint8List>('capture', {'html': html, 'width': width.round()});
-    } on MissingPluginException {
+    } on MissingPluginException catch (error) {
+      debugPrint('IntelligentUiSnapshot missing plugin: $error');
       return null;
-    } on PlatformException {
+    } on PlatformException catch (error) {
+      debugPrint('IntelligentUiSnapshot platform error: ${error.code} ${error.message}');
       return null;
-    } on Object {
+    } on Object catch (error) {
+      debugPrint('IntelligentUiSnapshot failed: $error');
       return null;
     }
   }
