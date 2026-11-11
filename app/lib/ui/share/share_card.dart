@@ -880,7 +880,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
     if (allowWebView && (card.artifact != null || card.widget != null)) {
       return IntelligentUiCard(artifact: _shareArtifact(card), readOnly: true);
     }
-    final bodyWidth = width == null ? 320.0 : width! - 32;
+    final bodyWidth = width == null ? 336.0 : width! - 16;
     final body = (card.artifact != null || card.widget != null)
         ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
         : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
@@ -895,7 +895,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        padding: const EdgeInsets.fromLTRB(8, 14, 8, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
