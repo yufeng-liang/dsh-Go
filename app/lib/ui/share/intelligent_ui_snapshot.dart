@@ -74,6 +74,10 @@ window.__diuiSetArtifact($data);
 }
 
 /// Paints `ui_render_widget` cards into bitmaps for the share card.
+const _widgetFitCss = '''
+*{box-sizing:border-box!important;min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important}
+''';
+
 class IntelligentUiSnapshot {
   const IntelligentUiSnapshot._();
 
@@ -112,7 +116,13 @@ class IntelligentUiSnapshot {
       final payload = card.artifact;
       if (payload == null && card.widget == null) return null;
       final kind = payload?['kind'] as String? ?? 'widget';
-      final definition = payload?['definition'] as Map? ?? card.widget!;
+      var definition = payload?['definition'] as Map? ?? card.widget!;
+      if (kind == 'widget') {
+        // The widget is rendered in its own document/shadow root, so the share
+        // card's CSS cannot clamp it. Add a tiny reset to its own stylesheet so
+        // grid/flex children may shrink instead of painting past the card edge.
+        definition = <String, Object?>{...definition, 'css': '${definition['css'] ?? ''}\n$_widgetFitCss'};
+      }
       final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
       final artifact = IntelligentUiArtifact(
         kind: IntelligentUiKind.values.firstWhere(
