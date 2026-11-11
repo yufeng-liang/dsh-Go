@@ -73,11 +73,6 @@ window.__diuiSetArtifact($data);
   return '${base.substring(0, end)}$setup${base.substring(end)}';
 }
 
-/// Paints `ui_render_widget` cards into bitmaps for the share card.
-const _widgetFitCss = '''
-*{box-sizing:border-box!important;min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important}
-''';
-
 class IntelligentUiSnapshot {
   const IntelligentUiSnapshot._();
 
@@ -117,12 +112,6 @@ class IntelligentUiSnapshot {
       if (payload == null && card.widget == null) return null;
       final kind = payload?['kind'] as String? ?? 'widget';
       var definition = payload?['definition'] as Map? ?? card.widget!;
-      if (kind == 'widget') {
-        // The widget is rendered in its own document/shadow root, so the share
-        // card's CSS cannot clamp it. Add a tiny reset to its own stylesheet so
-        // grid/flex children may shrink instead of painting past the card edge.
-        definition = <String, Object?>{...definition, 'css': '${definition['css'] ?? ''}\n$_widgetFitCss'};
-      }
       final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
       final artifact = IntelligentUiArtifact(
         kind: IntelligentUiKind.values.firstWhere(
@@ -144,7 +133,11 @@ class IntelligentUiSnapshot {
         dark: dark,
         locale: locale,
       );
-      return await _channel.invokeMethod<Uint8List>('capture', {'html': html, 'width': width.round()});
+      // Widget cards are designed for a wider chat canvas. Snapshot them at
+      // a stable minimum width and let the Image scale down, otherwise a narrow
+      // share card clips KPI grids instead of reflowing them.
+      final renderWidth = kind == 'widget' ? (width < 360 ? 360.0 : width) : width;
+      return await _channel.invokeMethod<Uint8List>('capture', {'html': html, 'width': renderWidth.round()});
     } on MissingPluginException catch (error) {
       debugPrint('IntelligentUiSnapshot missing plugin: $error');
       return null;
