@@ -61,6 +61,24 @@ void main() {
   });
 
 
+
+  test('exposes card sources with the tool seq', () {
+    final sources = shareIntelligentUiCardSources([
+      _card(
+        definition: {
+          'root': 'root',
+          'components': [
+            {'id': 'root', 'type': 'text', 'props': {'text': 'Hello card'}},
+          ],
+        },
+      ),
+    ]);
+    expect(sources, hasLength(1));
+    expect(sources.single.originSeq, 2);
+    expect(sources.single.title, 'Text Card');
+    expect(sources.single.markdown, contains('Hello card'));
+  });
+
   test('lays out UI cards among question and answer blocks', () {
     final layout = layoutShareBlocks([
       const ShareQuestion('hello'),

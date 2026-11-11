@@ -23,6 +23,7 @@
 - A share card is a Flutter `RepaintBoundary` screenshot, and platform views inside the WebView are not drawn into it. Sharing therefore turns the card's title, text, lists, tables, code, stats, badges and progress into Markdown and draws it in a native Flutter card shell, so the share image never depends on the WebView.
 - For `ui_render_widget`, only visible HTML text is extracted and no scripts run; interactions and live chart data are not part of the share image.
 - A patched card stays attached to the turn that first showed it (via `originSeq`) and is shared at its latest version, matching the chat.
+- A share link (`.dshgo` replay) writes the reply's cards into the share file as a `ui` array, and the replay page draws them in a native card shell from title and Markdown, without a WebView.
 
 ## Security boundary
 

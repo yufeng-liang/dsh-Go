@@ -140,6 +140,14 @@
 .dv-md { overflow-wrap: anywhere; }
 .dv-md > :first-child { margin-top: 0; }
 .dv-md > :last-child { margin-bottom: 0; }
+
+.dv-ui-card { margin: 12px 0 6px; padding: 14px 16px 12px; border: 1px solid var(--dv-line); border-radius: 16px; background: var(--dv-card); }
+.dv-ui-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--dv-ink-2); font-size: 13px; font-weight: 600; }
+.dv-ui-card-mark { color: var(--dv-primary); font-size: 15px; line-height: 1; }
+.dv-ui-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-ui-card-md { color: var(--dv-ink); font-size: 14px; }
+.dv-ui-card-md > :first-child { margin-top: 0; }
+.dv-ui-card-md > :last-child { margin-bottom: 0; }
 .dv-md p { margin: 0 0 12px; }
 .dv-md h1, .dv-md h2, .dv-md h3, .dv-md h4, .dv-md h5, .dv-md h6 { margin: 20px 0 8px; line-height: 1.35; font-weight: 600; }
 .dv-md h1 { font-size: 22px; } .dv-md h2 { font-size: 19px; } .dv-md h3 { font-size: 17px; } .dv-md h4, .dv-md h5, .dv-md h6 { font-size: 16px; }

@@ -21,6 +21,9 @@ const exportToolOutputChars = 2400;
 /// Longest string kept in a tool's arguments.
 const exportToolArgChars = 2000;
 
+/// Longest Markdown kept for one intelligent-ui card.
+const exportUiMarkdownChars = 20 * 1000;
+
 /// What a conversation export reads: the chat as loaded.
 class ConversationSource {
   const ConversationSource({
@@ -30,12 +33,16 @@ class ConversationSource {
     this.commands = const [],
     this.events = const [],
     this.model,
+    this.uiCards = const [],
   });
 
   final String title;
   final List<ChatItem> items;
   final List<TurnTrace> turns;
   final List<CommandNotice> commands;
+
+  /// Intelligent-ui cards, keyed by the reply seq they belong under.
+  final List<({int seq, String? title, String markdown})> uiCards;
 
   /// The durable log (todo and goal changes, times of notices).
   final Iterable<SessionLogEvent> events;
@@ -199,7 +206,17 @@ class ConversationExport {
         case AssistantChatItem(:final seq?) when messageIn(item, seq) && !item.streaming:
           final text = markdownWithoutImages(redactText(item.text.trimRight()));
           final reasoning = thinking ? redactText(item.reasoning.trim()) : '';
-          if (text.isEmpty && reasoning.isEmpty && !item.interrupted) continue;
+          final cards = [
+            for (final card in source.uiCards)
+              if (card.seq == seq)
+                ConversationUiCard(
+                  title: card.title == null ? null : redactText(card.title!),
+                  markdown: redactText(card.markdown.length > exportUiMarkdownChars
+                      ? card.markdown.substring(0, exportUiMarkdownChars)
+                      : card.markdown),
+                ),
+          ];
+          if (text.isEmpty && reasoning.isEmpty && cards.isEmpty && !item.interrupted) continue;
           final span = modelSpans[seq];
           final start = span?.firstToken ?? span?.start ?? item.time;
           final end = span?.lastToken ?? span?.end ?? item.time;
@@ -221,6 +238,7 @@ class ConversationExport {
               plain: plain == text ? null : plain,
               model: model,
               interrupted: item.interrupted,
+              ui: cards,
             ),
           ));
         case ToolChatItem(:final seq?) when tools && workInRange(seq):

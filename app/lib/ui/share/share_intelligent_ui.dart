@@ -41,16 +41,28 @@ List<ShareIntelligentUiCard> shareIntelligentUiCards(
   required int startSeq,
   int? endSeq,
 }) {
-  final cards = <IntelligentUiArtifact>[
+  return [
+    for (final card in shareIntelligentUiCardSources(artifacts))
+      if (card.originSeq >= startSeq && (endSeq == null || card.originSeq <= endSeq))
+        ShareIntelligentUiCard(title: card.title, markdown: card.markdown),
+  ];
+}
+
+/// Cards with the seq of the tool call that first showed them, for a share
+/// file's reply: the link viewer has no WebView, so it draws a card from this.
+List<({int originSeq, String? title, String markdown})> shareIntelligentUiCardSources(
+  Iterable<IntelligentUiArtifact> artifacts,
+) {
+  final sorted = <IntelligentUiArtifact>[
     for (final ui in artifacts)
-      if (ui.originSeq case final seq? when seq >= startSeq && (endSeq == null || seq <= endSeq)) ui,
+      if (ui.originSeq != null) ui,
   ]..sort((a, b) => (a.originSeq ?? 0).compareTo(b.originSeq ?? 0));
-  final out = <ShareIntelligentUiCard>[];
-  for (final card in cards) {
+  final out = <({int originSeq, String? title, String markdown})>[];
+  for (final card in sorted) {
     final body = _bodyOf(card).trim();
     if (body.isEmpty) continue;
     final title = (card.title ?? '').trim();
-    out.add(ShareIntelligentUiCard(title: title.isEmpty ? null : title, markdown: body));
+    out.add((originSeq: card.originSeq!, title: title.isEmpty ? null : title, markdown: body));
   }
   return out;
 }
