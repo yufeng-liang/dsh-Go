@@ -11,7 +11,7 @@ const replayViewerPage = r'''<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-SQx9DjHcIv7KDXzxussj4x+ZyUAaCegGkYXT1lOZc8A='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-uwP8Vsawpc7+Qidp7/YgWMtMHcCsWueLxUTNunRySes='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="light dark">
 <title>__DSHGO_TITLE__</title>
 <style>/* dsh-go conversation viewer (viewer.js). Shared by the landing page and the
@@ -156,6 +156,14 @@ const replayViewerPage = r'''<!doctype html>
 .dv-md { overflow-wrap: anywhere; }
 .dv-md > :first-child { margin-top: 0; }
 .dv-md > :last-child { margin-bottom: 0; }
+
+.dv-ui-card { margin: 12px 0 6px; padding: 14px 16px 12px; border: 1px solid var(--dv-line); border-radius: 16px; background: var(--dv-card); }
+.dv-ui-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--dv-ink-2); font-size: 13px; font-weight: 600; }
+.dv-ui-card-mark { color: var(--dv-primary); font-size: 15px; line-height: 1; }
+.dv-ui-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-ui-card-md { color: var(--dv-ink); font-size: 14px; }
+.dv-ui-card-md > :first-child { margin-top: 0; }
+.dv-ui-card-md > :last-child { margin-bottom: 0; }
 .dv-md p { margin: 0 0 12px; }
 .dv-md h1, .dv-md h2, .dv-md h3, .dv-md h4, .dv-md h5, .dv-md h6 { margin: 20px 0 8px; line-height: 1.35; font-weight: 600; }
 .dv-md h1 { font-size: 22px; } .dv-md h2 { font-size: 19px; } .dv-md h3 { font-size: 17px; } .dv-md h4, .dv-md h5, .dv-md h6 { font-size: 16px; }
@@ -326,6 +334,7 @@ const replayViewerPage = r'''<!doctype html>
       "messages": "{n} 条消息",
       "thoughts": "{n} 段思考",
       "tokenCount": "{count} tokens",
+      "uiCard": "智能界面",
       "viewerTitle": "查看对话 · dsh-go"
     },
     "en": {
@@ -402,6 +411,7 @@ const replayViewerPage = r'''<!doctype html>
         "one": "{count} token",
         "other": "{count} tokens"
       },
+      "uiCard": "Interactive UI",
       "viewerTitle": "View chat · dsh-go"
     }
   };
@@ -546,7 +556,12 @@ const replayViewerPage = r'''<!doctype html>
           }).map(function (f) { return { name: str(f.name, 200), size: num(f.size) }; })
         };
       case 'reply':
-        return { type: 'reply', t: t, d: d, text: str(e.text, MAX_TEXT) || '', think: str(e.think, MAX_TEXT), plain: str(e.plain, MAX_TEXT), model: str(e.model, 80), cut: e.cut === true };
+        return {
+          type: 'reply', t: t, d: d, text: str(e.text, MAX_TEXT) || '', think: str(e.think, MAX_TEXT), plain: str(e.plain, MAX_TEXT), model: str(e.model, 80), cut: e.cut === true,
+          ui: (Array.isArray(e.ui) ? e.ui.slice(0, 20) : []).filter(function (card) {
+            return card && str(card.md, 20000);
+          }).map(function (card) { return { title: str(card.title, 120), md: str(card.md, 20000) }; })
+        };
       case 'tool':
         return {
           type: 'tool', t: t, d: d, name: str(e.name, 80) || 'tool', summary: str(e.summary, 500) || '', verb: str(e.verb, 40),
@@ -1331,12 +1346,25 @@ const replayViewerPage = r'''<!doctype html>
       return row;
     }
 
+    function uiCardRow(card) {
+      var box = el('div', 'dv-ui-card');
+      var head = el('div', 'dv-ui-card-head');
+      head.appendChild(el('span', 'dv-ui-card-mark', '◇'));
+      head.appendChild(el('span', 'dv-ui-card-title', card.title || tr('uiCard')));
+      box.appendChild(head);
+      var body = el('div', 'dv-md dv-ui-card-md');
+      markdown(card.md, body);
+      box.appendChild(body);
+      return box;
+    }
+
     function replyRow(e, text, streaming, done, foot) {
       var row = el('div', 'dv-row');
       var md = el('div', 'dv-md');
       markdown(streaming ? repairStream(text) : text, md);
       if (streaming) caret(md);
       row.appendChild(md);
+      if (done && e.ui) e.ui.forEach(function (card) { row.appendChild(uiCardRow(card)); });
       if (done && e.cut) row.appendChild(el('div', 'dv-cut', tr('interrupted')));
       if (foot) row.appendChild(el('div', 'dv-foot-note', foot));
       return row;
@@ -1891,4 +1919,4 @@ DshgoViewer.boot();
 ''';
 
 /// What the page was built from (test/share_code/replay_viewer_sync_test.dart).
-const replayViewerSourceHash = '676f55f8a99ddb882587d2a928116e5ee77900c9c399b08085815875c23b881b';
+const replayViewerSourceHash = 'afd5e49f5f117032583d25f2a6301149d28d6f9c03557f5e565dd8b655a6a06c';

@@ -35,6 +35,8 @@ const _maxText = 400 * 1000;
 const _maxToolText = 64 * 1000;
 const _maxEntries = 20000;
 const _maxImagesPerMessage = 20;
+const _maxUiCards = 20;
+const _maxUiMarkdown = 20 * 1000;
 
 /// A tool call's outcome.
 enum ToolOutcome {
@@ -97,6 +99,7 @@ sealed class ConversationEntry {
           source: _str(json['source'], 32),
         );
       case 'reply':
+        final ui = json['ui'];
         return ReplyEntry(
           t: t,
           d: d,
@@ -105,6 +108,10 @@ sealed class ConversationEntry {
           plain: _str(json['plain'], _maxText),
           model: _str(json['model'], 80),
           interrupted: json['cut'] == true,
+          ui: [
+            if (ui is List)
+              for (final card in ui.take(_maxUiCards)) ?ConversationUiCard.fromJson(card),
+          ],
         );
       case 'tool':
         final args = json['args'];
@@ -240,6 +247,7 @@ final class ReplyEntry extends ConversationEntry {
     this.plain,
     this.model,
     this.interrupted = false,
+    this.ui = const [],
   }) : super(t);
 
   final int? d;
@@ -256,6 +264,9 @@ final class ReplyEntry extends ConversationEntry {
   final String? model;
   final bool interrupted;
 
+  /// Intelligent-ui cards shown under this reply on a share card / replay.
+  final List<ConversationUiCard> ui;
+
   @override
   String get type => 'reply';
 
@@ -269,7 +280,27 @@ final class ReplyEntry extends ConversationEntry {
     'plain': ?plain,
     'model': ?model,
     if (interrupted) 'cut': true,
+    if (ui.isNotEmpty) 'ui': [for (final card in ui) card.toJson()],
   };
+}
+
+/// One intelligent-ui card in a reply: a title and Markdown, as a viewer that
+/// has no sandboxed renderer can draw it.
+@immutable
+class ConversationUiCard {
+  const ConversationUiCard({this.title, required this.markdown});
+
+  static ConversationUiCard? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final markdown = _str(json['md'], _maxUiMarkdown);
+    if (markdown == null || markdown.isEmpty) return null;
+    return ConversationUiCard(title: _str(json['title'], 120), markdown: markdown);
+  }
+
+  final String? title;
+  final String markdown;
+
+  Map<String, Object?> toJson() => {'title': ?title, 'md': markdown};
 }
 
 final class ToolEntry extends ConversationEntry {
