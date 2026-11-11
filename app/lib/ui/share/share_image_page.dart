@@ -27,6 +27,7 @@ import '../theme/theme.dart';
 import 'share_card.dart';
 import 'share_content.dart';
 import 'share_export.dart';
+import 'intelligent_ui_snapshot.dart';
 
 /// How a card is drawn: the template and what it shows besides the answer.
 /// Shared by the panel's preview and its image page.
@@ -211,12 +212,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         onShare: () => _run(_Busy.sharing),
       ),
     );
-    return SharePageLayout(
-      title: l10n.viewShareAsImage,
-      top: choices,
-      preview: preview,
-      bottom: actions,
-    );
+    return SharePageLayout(title: l10n.viewShareAsImage, top: choices, preview: preview, bottom: actions);
   }
 }
 
@@ -231,6 +227,18 @@ Future<void> settleShareCard(BuildContext context, ShareContent content) async {
       );
     } else if (block case SharePlugin(:final icon?) when icon.startsWith('https://')) {
       pending.add(precacheImage(ResizeImage(NetworkImage(icon), width: (64 * dpr).round()), context));
+    } else if (block case ShareIntelligentUi(:final card) when card.widget != null) {
+      pending.add(() async {
+        final bytes = await IntelligentUiSnapshot.capture(
+          card: card,
+          width: ShareCard.width - 32,
+          dark: Theme.of(context).brightness == Brightness.dark,
+          locale: Localizations.localeOf(context).toLanguageTag(),
+        );
+        if (bytes != null && context.mounted) {
+          await precacheImage(MemoryImage(bytes), context);
+        }
+      }());
     }
   }
   try {
