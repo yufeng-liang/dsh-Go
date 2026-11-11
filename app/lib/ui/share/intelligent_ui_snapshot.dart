@@ -34,10 +34,24 @@ window.__diuiSetArtifact($data);
       window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));
     }
   }
+  function fit() {
+    var ui = document.getElementById('ui');
+    if (!ui) return;
+    var available = ui.clientWidth;
+    var widest = ui.scrollWidth;
+    var nodes = ui.querySelectorAll('*');
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].scrollWidth > widest) widest = nodes[i].scrollWidth;
+    }
+    if (available > 0 && widest > available + 1) {
+      ui.style.zoom = String(available / widest);
+    }
+  }
   function check() {
     var ui = document.getElementById('ui');
     var hasContent = !!ui && (ui.children.length > 0 || (ui.textContent || '').trim().length > 0);
     if (hasContent) {
+      fit();
       setTimeout(send, 250);
       return;
     }

@@ -20,6 +20,7 @@ void main() {
     expect(html, contains('window.__diuiSetArtifact('));
     expect(html, contains(r'\u003cp style='));
     expect(html, contains("type:'captureReady'"));
+    expect(html, contains('ui.style.zoom'));
   });
 
   test('snapshot bootstrap stays outside a renderer string containing </body>', () {
