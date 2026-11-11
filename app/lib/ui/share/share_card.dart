@@ -741,10 +741,13 @@ class _Question extends StatelessWidget {
 /// blocks as [ShareCodeWell]s (wrapped, no buttons: an image can't scroll
 /// or copy), its pictures as galleries where they stood.
 class _Answer extends StatelessWidget {
-  const _Answer(this.markdown, {required this.width});
+  const _Answer(this.markdown, {required this.width, this.scale = 1});
 
   final String markdown;
   final double width;
+
+  /// 字号缩放；智能 UI 卡片用 13/16 与聊天里的 WebView 卡片对齐。
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
@@ -763,7 +766,7 @@ class _Answer extends StatelessWidget {
           else if (segment.code)
             ShareCodeWell(code: segment.text, language: segment.language)
           else
-            MarkdownBody(text: segment.text, selectable: false),
+            MarkdownBody(text: segment.text, selectable: false, scale: scale),
         ],
       ],
     );
@@ -879,7 +882,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            _Answer(card.markdown, width: width == null ? 320 : width! - 32),
+            _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
           ],
         ),
       ),

@@ -72,6 +72,7 @@ class MarkdownBody extends StatefulWidget {
     this.streaming = false,
     this.reveal = false,
     this.selectable = true,
+    this.scale = 1,
     this.secondary = false,
     this.repairBareViews = false,
   });
@@ -86,6 +87,10 @@ class MarkdownBody extends StatefulWidget {
   /// life of this body: the tree stays and nothing moves when the reply finishes.
   final bool reveal;
   final bool selectable;
+
+  /// 字号缩放。智能 UI 卡片在聊天里是 13px 的 WebView,回放/分享卡片用同一个
+  /// 比例,避免同一张卡片换到 Flutter 后字突然变大。
+  final double scale;
 
   /// 次级排版(思考过程):小一号、次级文字色,标题也不抢眼。
   final bool secondary;
@@ -648,8 +653,8 @@ class _MarkdownBodyState extends State<MarkdownBody> {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final body = widget.secondary
-        ? AppType.chatBody(context, scale: 0.9, color: theme.colorScheme.onSurfaceVariant)
-        : AppType.chatBody(context, color: theme.colorScheme.onSurface);
+        ? AppType.chatBody(context, scale: 0.9 * widget.scale, color: theme.colorScheme.onSurfaceVariant)
+        : AppType.chatBody(context, scale: widget.scale, color: theme.colorScheme.onSurface);
     final source = _source;
 
     // 表格底色是用户设置，只有主题跟着它变；正文 widget 本身保持同一个实例，
