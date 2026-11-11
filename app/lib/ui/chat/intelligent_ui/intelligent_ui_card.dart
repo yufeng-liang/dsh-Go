@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
@@ -91,17 +92,23 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
     },
     onHeight:function(height){ send('resize',{height:height}); }
   };
+  window.open=function(url){ if(url) send('openLink',{url:String(url)}); return null; };
   var renderer=DshIntelligentUiRenderer.mount(document.getElementById('ui'),host);
   document.addEventListener('click',function(event){
-    var anchor=event.target&&event.target.closest?event.target.closest('a[download]'):null;
+    var anchor=event.target&&event.target.closest?event.target.closest('a[href]'):null;
     if(!anchor) return;
-    var href=anchor.getAttribute('href')||'';
-    if(href.indexOf('blob:')!==0) return;
-    event.preventDefault();
-    fetch(href).then(function(response){return response.text();}).then(function(text){
-      send('download',{name:anchor.getAttribute('download')||'download.txt',text:text});
-    }).catch(function(error){send('error',{message:String(error&&error.message||error)});});
-  });
+    if(anchor.hasAttribute('download')){
+      var href=anchor.getAttribute('href')||'';
+      if(href.indexOf('blob:')!==0) return;
+      event.preventDefault();
+      fetch(href).then(function(response){return response.text();}).then(function(text){
+        send('download',{name:anchor.getAttribute('download')||'download.txt',text:text});
+      }).catch(function(error){send('error',{message:String(error&&error.message||error)});});
+      return;
+    }
+    var link=anchor.getAttribute('href')||'';
+    if(link.indexOf('https://')===0){ event.preventDefault(); send('openLink',{url:link}); }
+  },true);
   window.__diuiSetArtifact=function(value){
     try { renderer.render(value); } catch(error) { send('error',{message:String(error&&error.message||error)}); }
   };
@@ -318,9 +325,29 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         if (text == null) return;
         await SharePlus.instance.share(ShareParams(text: text, subject: parsed.name ?? widget.artifact.title ?? ''));
         break;
+      case 'openLink':
+        await _handleOpenLink(parsed);
+        break;
       case 'prompt':
         await _handlePrompt(parsed);
         break;
+    }
+  }
+
+  Future<void> _handleOpenLink(IntelligentUiBridgeMessage message) async {
+    final raw = message.url?.trim();
+    if (raw == null || raw.isEmpty) return;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme.toLowerCase() != 'https' || !uri.hasAuthority) return;
+    final allowed = switch (widget.artifact.policy['openLinkOrigins']) {
+      final List<Object?> value => value.whereType<String>().toList(growable: false),
+      _ => const <String>[],
+    };
+    if (allowed.isNotEmpty && !allowed.any((origin) => origin == uri.origin)) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Opening the browser is best-effort; the card itself stays usable.
     }
   }
 

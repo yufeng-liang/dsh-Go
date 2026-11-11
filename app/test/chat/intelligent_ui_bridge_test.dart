@@ -8,11 +8,7 @@ void main() {
   group('parseIntelligentUiBridgeMessage', () {
     test('accepts a matching token and extracts fields', () {
       final message = parseIntelligentUiBridgeMessage(
-        jsonEncode({
-          'token': 't',
-          'type': 'resize',
-          'height': 321.5,
-        }),
+        jsonEncode({'token': 't', 'type': 'resize', 'height': 321.5}),
         't',
       );
       expect(message, isNotNull);
@@ -21,10 +17,7 @@ void main() {
     });
 
     test('rejects a wrong token and oversized payloads', () {
-      expect(
-        parseIntelligentUiBridgeMessage(jsonEncode({'token': 'x', 'type': 'ready'}), 't'),
-        isNull,
-      );
+      expect(parseIntelligentUiBridgeMessage(jsonEncode({'token': 'x', 'type': 'ready'}), 't'), isNull);
       expect(parseIntelligentUiBridgeMessage('x' * 32769, 't'), isNull);
     });
 
@@ -53,5 +46,12 @@ void main() {
       guard.invalidate();
       expect(guard.isCurrent(1), isFalse);
     });
+  });
+
+  test('parses openLink url', () {
+    final msg = parseIntelligentUiBridgeMessage('{"token":"t","type":"openLink","url":"https://example.com/a"}', 't');
+    expect(msg, isNotNull);
+    expect(msg!.type, 'openLink');
+    expect(msg.url, 'https://example.com/a');
   });
 }
