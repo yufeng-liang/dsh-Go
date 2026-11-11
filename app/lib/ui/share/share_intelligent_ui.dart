@@ -12,24 +12,19 @@ import '../../state/intelligent_ui.dart';
 ///
 /// Patches keep the original [IntelligentUiArtifact.originSeq], so a card
 /// updated later still belongs to the turn that first showed it.
-String? shareIntelligentUiMarkdown(
-  Iterable<IntelligentUiArtifact> artifacts, {
-  required int startSeq,
-  int? endSeq,
-}) {
+String? shareIntelligentUiMarkdown(Iterable<IntelligentUiArtifact> artifacts, {required int startSeq, int? endSeq}) {
   final cards = shareIntelligentUiCards(artifacts, startSeq: startSeq, endSeq: endSeq);
   if (cards.isEmpty) return null;
-  return cards
-      .map((card) => card.title == null ? card.markdown : '**${card.title}**\n\n${card.markdown}')
-      .join('\n\n');
+  return cards.map((card) => card.title == null ? card.markdown : '**${card.title}**\n\n${card.markdown}').join('\n\n');
 }
 
 /// One UI card as it goes on a share card: an optional title and Markdown.
 class ShareIntelligentUiCard {
-  const ShareIntelligentUiCard({this.title, required this.markdown});
+  const ShareIntelligentUiCard({this.title, required this.markdown, this.widget});
 
   final String? title;
   final String markdown;
+  final Map<String, Object?>? widget;
 }
 
 /// The UI cards that belong to [turn]'s seq range, latest version per UI id.
@@ -44,27 +39,39 @@ List<ShareIntelligentUiCard> shareIntelligentUiCards(
   return [
     for (final card in shareIntelligentUiCardSources(artifacts))
       if (card.originSeq >= startSeq && (endSeq == null || card.originSeq <= endSeq))
-        ShareIntelligentUiCard(title: card.title, markdown: card.markdown),
+        ShareIntelligentUiCard(title: card.title, markdown: card.markdown, widget: card.widget),
   ];
 }
 
 /// Cards with the seq of the tool call that first showed them, for a share
 /// file's reply: the link viewer has no WebView, so it draws a card from this.
-List<({int originSeq, String? title, String markdown})> shareIntelligentUiCardSources(
+List<({int originSeq, String? title, String markdown, Map<String, Object?>? widget})> shareIntelligentUiCardSources(
   Iterable<IntelligentUiArtifact> artifacts,
 ) {
   final sorted = <IntelligentUiArtifact>[
     for (final ui in artifacts)
       if (ui.originSeq != null) ui,
   ]..sort((a, b) => (a.originSeq ?? 0).compareTo(b.originSeq ?? 0));
-  final out = <({int originSeq, String? title, String markdown})>[];
+  final out = <({int originSeq, String? title, String markdown, Map<String, Object?>? widget})>[];
   for (final card in sorted) {
     final body = _bodyOf(card).trim();
     if (body.isEmpty) continue;
     final title = (card.title ?? '').trim();
-    out.add((originSeq: card.originSeq!, title: title.isEmpty ? null : title, markdown: body));
+    out.add((
+      originSeq: card.originSeq!,
+      title: title.isEmpty ? null : title,
+      markdown: body,
+      widget: card.kind == IntelligentUiKind.widget ? _widgetDefinition(card.definition) : null,
+    ));
   }
   return out;
+}
+
+Map<String, Object?>? _widgetDefinition(Map<String, Object?> definition) {
+  final html = _string(definition['html']);
+  if (html == null || html.isEmpty) return null;
+  final css = _string(definition['css']);
+  return {'html': html, if (css != null && css.isNotEmpty) 'css': css};
 }
 
 String _bodyOf(IntelligentUiArtifact ui) => switch (ui.kind) {
@@ -84,14 +91,10 @@ String _compositionMarkdown(Map<String, Object?> definition) {
         final text = _string(block['text']);
         if (text != null) out.add(text);
       case 'catalog':
-        final markdown = _catalogMarkdown({
-          for (final e in block.entries) '${e.key}': e.value,
-        });
+        final markdown = _catalogMarkdown({for (final e in block.entries) '${e.key}': e.value});
         if (markdown.isNotEmpty) out.add(markdown);
       case 'widget':
-        final markdown = _widgetMarkdown({
-          for (final e in block.entries) '${e.key}': e.value,
-        });
+        final markdown = _widgetMarkdown({for (final e in block.entries) '${e.key}': e.value});
         if (markdown.isNotEmpty) out.add(markdown);
     }
   }
@@ -154,10 +157,10 @@ String? _nodeMarkdown(Map node) {
 
   switch (type) {
     case 'text' || 'heading' || 'title' || 'label' || 'caption' || 'markdown' || 'richtext':
-      return [textOf(props['title']), textOf(props['text']) ?? textOf(props['markdown']) ?? textOf(props['value'])]
-          .whereType<String>()
-          .where((s) => s.isNotEmpty)
-          .join('\n\n');
+      return [
+        textOf(props['title']),
+        textOf(props['text']) ?? textOf(props['markdown']) ?? textOf(props['value']),
+      ].whereType<String>().where((s) => s.isNotEmpty).join('\n\n');
     case 'code':
       final code = textOf(props['code']) ?? textOf(props['text']);
       if (code == null || code.isEmpty) return null;
@@ -236,7 +239,10 @@ String? _string(Object? value) {
 }
 
 String _htmlText(String html) {
-  final withoutScripts = html.replaceAll(RegExp(r'<(script|style)[^>]*>.*?</\1>', dotAll: true, caseSensitive: false), ' ');
+  final withoutScripts = html.replaceAll(
+    RegExp(r'<(script|style)[^>]*>.*?</\1>', dotAll: true, caseSensitive: false),
+    ' ',
+  );
   final text = withoutScripts
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
       .replaceAll(RegExp(r'</(p|div|li|h[1-6])>', caseSensitive: false), '\n')
@@ -246,5 +252,9 @@ String _htmlText(String html) {
       .replaceAll('&lt;', '<')
       .replaceAll('&gt;', '>')
       .replaceAll('&quot;', '"');
-  return text.split('\n').map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trim()).where((line) => line.isNotEmpty).join('\n');
+  return text
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trim())
+      .where((line) => line.isNotEmpty)
+      .join('\n');
 }

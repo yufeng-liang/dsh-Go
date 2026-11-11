@@ -113,10 +113,14 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
 }
 
 class IntelligentUiCard extends ConsumerStatefulWidget {
-  const IntelligentUiCard({super.key, required this.artifact, this.onSendPrompt});
+  const IntelligentUiCard({super.key, required this.artifact, this.onSendPrompt, this.readOnly = false});
 
   final IntelligentUiArtifact artifact;
   final Future<bool> Function(String text)? onSendPrompt;
+
+  /// Replay/share cards are read-only: action buttons may render, but any
+  /// prompt is rejected instead of reaching a host.
+  final bool readOnly;
 
   @override
   ConsumerState<IntelligentUiCard> createState() => _IntelligentUiCardState();
@@ -170,8 +174,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   void didUpdateWidget(covariant IntelligentUiCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_ready) return;
-    if (oldWidget.artifact.uiId != widget.artifact.uiId ||
-        oldWidget.artifact.version != widget.artifact.version) {
+    if (oldWidget.artifact.uiId != widget.artifact.uiId || oldWidget.artifact.version != widget.artifact.version) {
       _postArtifact();
     }
   }
@@ -189,10 +192,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       final controller = WebViewController();
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setBackgroundColor(Colors.transparent);
-      await controller.addJavaScriptChannel(
-        'Dsh',
-        onMessageReceived: (message) => unawaited(_onMessage(message)),
-      );
+      await controller.addJavaScriptChannel('Dsh', onMessageReceived: (message) => unawaited(_onMessage(message)));
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (request) {
@@ -220,18 +220,16 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         await android.setAllowContentAccess(false);
         await android.setMixedContentMode(MixedContentMode.neverAllow);
       }
-      _guard = WebViewGuard(onGone: (crashed) {
-        if (!mounted) return;
-        setState(() {
-          _gone = true;
-          _error = null;
-        });
-      });
-      await _guard!.attach(
-        controller,
-        dark: _dark,
-        textZoom: _textZoom,
+      _guard = WebViewGuard(
+        onGone: (crashed) {
+          if (!mounted) return;
+          setState(() {
+            _gone = true;
+            _error = null;
+          });
+        },
       );
+      await _guard!.attach(controller, dark: _dark, textZoom: _textZoom);
       _controller = controller;
       if (mounted) setState(() {});
       await controller.loadHtmlString(buildIntelligentUiHtml(rendererCode: code, token: _token));
@@ -263,13 +261,19 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   }
 
   void _setTheme(bool dark) {
-    unawaited(_controller?.runJavaScript("window.__diuiSetTheme && window.__diuiSetTheme(${jsonEncode(dark ? 'dark' : 'light')}); true;"));
+    unawaited(
+      _controller?.runJavaScript(
+        "window.__diuiSetTheme && window.__diuiSetTheme(${jsonEncode(dark ? 'dark' : 'light')}); true;",
+      ),
+    );
   }
 
   void _setLocale() {
     final language = Localizations.localeOf(context).languageCode;
     final locale = language == 'zh' ? 'zh-CN' : language;
-    unawaited(_controller?.runJavaScript('window.__diuiSetLocale && window.__diuiSetLocale(${jsonEncode(locale)}); true;'));
+    unawaited(
+      _controller?.runJavaScript('window.__diuiSetLocale && window.__diuiSetLocale(${jsonEncode(locale)}); true;'),
+    );
   }
 
   Future<void> _onMessage(JavaScriptMessage message) async {
@@ -294,9 +298,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       case 'download':
         final text = parsed.text;
         if (text == null) return;
-        await SharePlus.instance.share(
-          ShareParams(text: text, subject: parsed.name ?? widget.artifact.title ?? ''),
-        );
+        await SharePlus.instance.share(ShareParams(text: text, subject: parsed.name ?? widget.artifact.title ?? ''));
         break;
       case 'prompt':
         await _handlePrompt(parsed);
@@ -308,6 +310,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final id = message.id;
     final text = message.text?.trim();
     if (id == null || text == null || text.isEmpty || text.length > 4000 || !_ready) return;
+    if (widget.readOnly) {
+      _reply(id, false, 'read-only');
+      return;
+    }
     if (!_scopeActive() || _actions.admit(id, DateTime.now()) == null) {
       _reply(id, false, 'unavailable');
       return;
@@ -394,9 +400,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
             // 纵向拖动不注册，仍由外层 CustomScrollView 接管。
             child: WebViewWidget(
               controller: _controller!,
-              gestureRecognizers: {
-                Factory<LongPressGestureRecognizer>(LongPressGestureRecognizer.new),
-              },
+              gestureRecognizers: {Factory<LongPressGestureRecognizer>(LongPressGestureRecognizer.new)},
             ),
           );
     final title = widget.artifact.title?.trim();

@@ -12,6 +12,26 @@ void main() {
     expect(again.markdown, 'Long press this text');
   });
 
+  test('round-trips a widget card for high-fidelity replay', () {
+    const card = ConversationUiCard(
+      title: 'Typography specimen',
+      markdown: 'body',
+      widget: {'html': '<p style="font-family: serif">serif</p>', 'css': 'p{font-size:20px}'},
+    );
+    final again = ConversationUiCard.fromJson(card.toJson());
+    expect(again, isNotNull);
+    expect(again!.widget, {'html': '<p style="font-family: serif">serif</p>', 'css': 'p{font-size:20px}'});
+  });
+
+  test('rejects a widget definition with a script tag', () {
+    final card = ConversationUiCard.fromJson({
+      'md': 'body',
+      'widget': {'html': '<script>alert(1)</script>'},
+    });
+    expect(card, isNotNull);
+    expect(card!.widget, isNull);
+  });
+
   test('drops an empty card and keeps a title-less one', () {
     expect(ConversationUiCard.fromJson({'md': ''}), isNull);
     expect(ConversationUiCard.fromJson({'md': 42}), isNull);

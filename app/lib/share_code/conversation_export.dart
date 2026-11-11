@@ -43,13 +43,19 @@ class ConversationSource {
   final List<CommandNotice> commands;
 
   /// Intelligent-ui cards, keyed by the reply seq they belong under.
-  final List<({int seq, String? title, String markdown})> uiCards;
+  final List<({int seq, String? title, String markdown, Map<String, Object?>? widget})> uiCards;
 
   /// The durable log (todo and goal changes, times of notices).
   final Iterable<SessionLogEvent> events;
 
   /// The model the conversation uses now (when no reply names one).
   final String? model;
+}
+
+Map<String, Object?>? _shareableWidget(Map<String, Object?>? widget) {
+  final html = widget?['html'];
+  if (html is! String || redactText(html) != html) return null;
+  return widget;
 }
 
 /// One round: a prompt and what followed it, up to the next prompt.
@@ -211,9 +217,14 @@ class ConversationExport {
               if (card.seq == seq)
                 ConversationUiCard(
                   title: card.title == null ? null : redactText(card.title!),
-                  markdown: redactText(card.markdown.length > exportUiMarkdownChars
-                      ? card.markdown.substring(0, exportUiMarkdownChars)
-                      : card.markdown),
+                  markdown: redactText(
+                    card.markdown.length > exportUiMarkdownChars
+                        ? card.markdown.substring(0, exportUiMarkdownChars)
+                        : card.markdown,
+                  ),
+                  // HTML is the full-fidelity copy of the card's text; if
+                  // redaction would change it, keep only the redacted Markdown.
+                  widget: _shareableWidget(card.widget),
                 ),
           ];
           if (text.isEmpty && reasoning.isEmpty && cards.isEmpty && !item.interrupted) continue;
