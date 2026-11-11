@@ -23,6 +23,7 @@ import 'qr_code.dart';
 import 'share_content.dart';
 import 'share_gallery.dart';
 import 'share_intelligent_ui.dart';
+import 'share_widget_text.dart';
 
 /// The card's look. Every template draws the same content.
 enum ShareTemplate {
@@ -867,6 +868,10 @@ class ShareIntelligentUiCardView extends StatelessWidget {
         readOnly: true,
       );
     }
+    final bodyWidth = width == null ? 320.0 : width! - 32;
+    final body = card.widget != null
+        ? ShareWidgetTextView(widget: card.widget!, markdown: card.markdown, width: bodyWidth, title: card.title)
+        : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return DecoratedBox(
@@ -905,7 +910,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
+            body,
           ],
         ),
       ),

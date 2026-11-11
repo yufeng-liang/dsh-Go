@@ -60,12 +60,38 @@ List<({int originSeq, String? title, String markdown, Map<String, Object?>? widg
     out.add((
       originSeq: card.originSeq!,
       title: title.isEmpty ? null : title,
-      markdown: body,
+      markdown: _withoutLeadingTitle(body, title),
       widget: card.kind == IntelligentUiKind.widget ? _widgetDefinition(card.definition) : null,
     ));
   }
   return out;
 }
+
+/// The native share frame already draws [title]; drop the same heading at the
+/// start of [body] so the card does not show it twice.
+String _withoutLeadingTitle(String body, String title) {
+  if (title.isEmpty) return body;
+  final wanted = _plain(title);
+  final lines = body.split('\n');
+  var i = 0;
+  while (i < lines.length) {
+    final line = lines[i].trim();
+    if (line.isEmpty) {
+      i++;
+      continue;
+    }
+    if (_plain(line) != wanted) break;
+    i++;
+  }
+  return i == 0 ? body : lines.skip(i).join('\n').trim();
+}
+
+String _plain(String text) => text
+    .replaceAll(RegExp(r'^[#>*_\-\s]+'), '')
+    .replaceAll(RegExp(r'[*_`~]'), '')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim()
+    .toLowerCase();
 
 Map<String, Object?>? _widgetDefinition(Map<String, Object?> definition) {
   final html = _string(definition['html']);
