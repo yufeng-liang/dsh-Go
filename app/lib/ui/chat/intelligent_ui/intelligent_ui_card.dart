@@ -26,7 +26,8 @@ const _mobileStyles = '''
 html,body{padding:0!important;margin:0!important;overflow-x:hidden;background:transparent;-webkit-tap-highlight-color:transparent}
 #ui{padding:0!important;margin:0!important;overflow-x:hidden!important}
 #ui,#ui *{box-sizing:border-box!important}
-#ui *{max-width:100%!important}
+#ui{width:100%!important}
+#ui *{max-width:100%!important;min-width:0!important;overflow-wrap:anywhere}
 .diui-remote-title{display:none!important}
 #ui .diui-remote{padding:0!important;font-size:13px}
 .diui-compose{display:flex;flex-direction:column;gap:10px;padding:2px 0 8px}
