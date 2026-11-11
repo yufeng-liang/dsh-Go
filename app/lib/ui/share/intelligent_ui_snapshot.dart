@@ -27,11 +27,28 @@ String buildIntelligentUiSnapshotHtml({
 window.__diuiSetTheme(${jsonEncode(dark ? 'dark' : 'light')});
 window.__diuiSetLocale(${jsonEncode(locale)});
 window.__diuiSetArtifact($data);
-setTimeout(function(){
-  if (window.Dsh && window.Dsh.postMessage) {
-    window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));
+(function(){
+  var started = Date.now();
+  function send() {
+    if (window.Dsh && window.Dsh.postMessage) {
+      window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));
+    }
   }
-}, 150);
+  function check() {
+    var ui = document.getElementById('ui');
+    var hasContent = !!ui && (ui.children.length > 0 || (ui.textContent || '').trim().length > 0);
+    if (hasContent) {
+      setTimeout(send, 250);
+      return;
+    }
+    if (Date.now() - started > 5000) {
+      send();
+      return;
+    }
+    setTimeout(check, 100);
+  }
+  setTimeout(check, 100);
+})();
 </script>''';
   return base.replaceFirst('</body>', '$setup</body>');
 }
