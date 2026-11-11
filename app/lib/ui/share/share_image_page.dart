@@ -227,7 +227,7 @@ Future<void> settleShareCard(BuildContext context, ShareContent content) async {
       );
     } else if (block case SharePlugin(:final icon?) when icon.startsWith('https://')) {
       pending.add(precacheImage(ResizeImage(NetworkImage(icon), width: (64 * dpr).round()), context));
-    } else if (block case ShareIntelligentUi(:final card) when card.widget != null) {
+    } else if (block case ShareIntelligentUi(:final card) when card.widget != null || card.artifact != null) {
       pending.add(() async {
         final bytes = await IntelligentUiSnapshot.capture(
           card: card,
