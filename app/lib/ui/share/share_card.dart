@@ -848,6 +848,25 @@ class ShareIntelligentUiCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A widget card keeps its real chat-card shell: the live card is the most
+    // faithful replay and already carries the same title, padding and 13px
+    // WebView typography as the chat list.
+    if (card.widget case final widget? when allowWebView) {
+      return IntelligentUiCard(
+        artifact: IntelligentUiArtifact(
+          kind: IntelligentUiKind.widget,
+          hostId: '',
+          sessionId: '',
+          uiId: 'share-${widget['html'].hashCode}',
+          version: 1,
+          definition: widget,
+          seq: 0,
+          title: card.title,
+          policy: const {'maxHeight': 4000},
+        ),
+        readOnly: true,
+      );
+    }
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return DecoratedBox(
@@ -878,33 +897,15 @@ class ShareIntelligentUiCardView extends StatelessWidget {
                 ),
               ],
             ),
-            if (card.widget case final widget? when allowWebView) ...[
-              const SizedBox(height: 8),
-              IntelligentUiCard(
-                artifact: IntelligentUiArtifact(
-                  kind: IntelligentUiKind.widget,
-                  hostId: '',
-                  sessionId: '',
-                  uiId: 'share-${widget['html'].hashCode}',
-                  version: 1,
-                  definition: widget,
-                  seq: 0,
-                  title: card.title,
-                  policy: const {'maxHeight': 4000},
-                ),
-                readOnly: true,
+            if (card.title case final title?) ...[
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurface),
               ),
-            ] else ...[
-              if (card.title case final title?) ...[
-                const SizedBox(height: 10),
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurface),
-                ),
-              ],
-              const SizedBox(height: 8),
-              _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
             ],
+            const SizedBox(height: 8),
+            _Answer(card.markdown, width: width == null ? 320 : width! - 32, scale: 13 / 16),
           ],
         ),
       ),
