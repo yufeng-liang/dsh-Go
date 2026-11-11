@@ -50,7 +50,13 @@ window.__diuiSetArtifact($data);
   setTimeout(check, 100);
 })();
 </script>''';
-  return base.replaceFirst('</body>', '$setup</body>');
+  // The renderer bundle contains strings such as `"</body>"` inside its own
+  // JavaScript. Insert before the *last* real body end, otherwise the setup
+  // script lands in the middle of the renderer and the page renders its
+  // source code as text.
+  final end = base.lastIndexOf('</body>');
+  if (end < 0) return '$base$setup';
+  return '${base.substring(0, end)}$setup${base.substring(end)}';
 }
 
 /// Paints `ui_render_widget` cards into bitmaps for the share card.

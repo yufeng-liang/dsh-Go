@@ -21,4 +21,23 @@ void main() {
     expect(html, contains(r'\u003cp style='));
     expect(html, contains("type:'captureReady'"));
   });
+
+  test('snapshot bootstrap stays outside a renderer string containing </body>', () {
+    final html = buildIntelligentUiSnapshotHtml(
+      rendererCode: 'var fake = "</body>"; window.renderer = true;',
+      artifact: const {
+        'kind': 'widget',
+        'uiId': 'share-1',
+        'version': 1,
+        'definition': {'html': '<p>Hello</p>'},
+      },
+      dark: false,
+      locale: 'en',
+    );
+    final setup = html.indexOf("type:'captureReady'");
+    final lastBody = html.lastIndexOf('</body>');
+    final rendererEnd = html.indexOf('</script>');
+    expect(setup, greaterThan(rendererEnd));
+    expect(setup, lessThan(lastBody));
+  });
 }
