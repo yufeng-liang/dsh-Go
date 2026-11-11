@@ -52,9 +52,9 @@ class IntelligentUiSnapshot {
     required bool dark,
     required String locale,
   }) {
-    final widget = card.widget;
-    if (widget == null || width <= 0) return Future<Uint8List?>.value();
-    final key = '${widget.hashCode}|${width.toStringAsFixed(1)}|$dark|$locale';
+    final payload = card.artifact ?? card.widget;
+    if (payload == null || width <= 0) return Future<Uint8List?>.value();
+    final key = '${payload.hashCode}|${width.toStringAsFixed(1)}|$dark|$locale';
     final cached = _cache[key];
     if (cached != null) return cached;
     if (_cache.length >= _maxCache) _cache.remove(_cache.keys.first);
@@ -71,18 +71,24 @@ class IntelligentUiSnapshot {
   }) async {
     try {
       final rendererCode = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
-      final widget = card.widget;
-      if (widget == null) return null;
+      final payload = card.artifact;
+      if (payload == null && card.widget == null) return null;
+      final kind = payload?['kind'] as String? ?? 'widget';
+      final definition = payload?['definition'] as Map? ?? card.widget!;
+      final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
       final artifact = IntelligentUiArtifact(
-        kind: IntelligentUiKind.widget,
+        kind: IntelligentUiKind.values.firstWhere(
+          (value) => value.name == kind,
+          orElse: () => IntelligentUiKind.widget,
+        ),
         hostId: '',
         sessionId: '',
-        uiId: 'share-${widget.hashCode}',
+        uiId: 'share-${payload?.hashCode ?? card.widget.hashCode}',
         version: 1,
-        definition: widget,
+        definition: Map<String, Object?>.from(definition),
         seq: 0,
         title: card.title,
-        policy: const {'maxHeight': 4000},
+        policy: Map<String, Object?>.from(policy),
       );
       final html = buildIntelligentUiSnapshotHtml(
         rendererCode: rendererCode,

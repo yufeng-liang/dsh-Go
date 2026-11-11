@@ -576,12 +576,10 @@ class SharePanelModel extends ChangeNotifier {
   /// Intelligent-ui cards, keyed by the last reply seq of the turn that first
   /// showed them. A share file has no WebView, so the viewer draws the card
   /// from the artifact's Markdown instead.
-  List<({int seq, String? title, String markdown, Map<String, Object?>? widget})> _uiCards(
-    List<ChatItem> items,
-    List<TurnTrace> turns,
-    List<IntelligentUiArtifact> artifacts,
-  ) {
-    final out = <({int seq, String? title, String markdown, Map<String, Object?>? widget})>[];
+  List<({int seq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>
+  _uiCards(List<ChatItem> items, List<TurnTrace> turns, List<IntelligentUiArtifact> artifacts) {
+    final out =
+        <({int seq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>[];
     for (final card in shareIntelligentUiCardSources(artifacts)) {
       final trace = turns
           .where((t) => t.startSeq <= card.originSeq && (t.endSeq == null || card.originSeq <= t.endSeq!))
@@ -600,7 +598,13 @@ class SharePanelModel extends ChangeNotifier {
           .lastOrNull
           ?.seq;
       if (replySeq == null) continue;
-      out.add((seq: replySeq, title: card.title, markdown: card.markdown, widget: card.widget));
+      out.add((
+        seq: replySeq,
+        title: card.title,
+        markdown: card.markdown,
+        widget: card.widget,
+        artifact: card.artifact,
+      ));
     }
     return out;
   }

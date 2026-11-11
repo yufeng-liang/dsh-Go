@@ -24,6 +24,14 @@ const exportToolArgChars = 2000;
 /// Longest Markdown kept for one intelligent-ui card.
 const exportUiMarkdownChars = 20 * 1000;
 
+Map<String, Object?>? _shareableArtifact(Map<String, Object?>? artifact) {
+  if (artifact == null) return null;
+  final encoded = jsonEncode(artifact);
+  // If redaction would rewrite any text, fall back to the redacted Markdown.
+  if (redactText(encoded) != encoded) return null;
+  return artifact;
+}
+
 /// What a conversation export reads: the chat as loaded.
 class ConversationSource {
   const ConversationSource({
@@ -42,7 +50,8 @@ class ConversationSource {
   final List<CommandNotice> commands;
 
   /// Intelligent-ui cards, keyed by the reply seq they belong under.
-  final List<({int seq, String? title, String markdown, Map<String, Object?>? widget})> uiCards;
+  final List<({int seq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>
+  uiCards;
 
   /// The durable log (todo and goal changes, times of notices).
   final Iterable<SessionLogEvent> events;
@@ -224,6 +233,7 @@ class ConversationExport {
                   // HTML is the full-fidelity copy of the card's text; if
                   // redaction would change it, keep only the redacted Markdown.
                   widget: _shareableWidget(card.widget),
+                  artifact: _shareableArtifact(card.artifact),
                 ),
           ];
           if (text.isEmpty && reasoning.isEmpty && cards.isEmpty && !item.interrupted) continue;

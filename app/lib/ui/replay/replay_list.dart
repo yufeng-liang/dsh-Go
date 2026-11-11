@@ -221,7 +221,12 @@ class _ReplayListState extends ConsumerState<ReplayList> {
             padding: const EdgeInsets.only(top: 8),
             child: LayoutBuilder(
               builder: (context, constraints) => ShareIntelligentUiCardView(
-                ShareIntelligentUiCard(title: card.title, markdown: card.markdown, widget: card.widget),
+                ShareIntelligentUiCard(
+                  title: card.title,
+                  markdown: card.markdown,
+                  widget: card.widget,
+                  artifact: card.artifact,
+                ),
                 width: constraints.maxWidth,
                 allowWebView: true,
               ),

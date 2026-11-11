@@ -122,6 +122,24 @@ void main() {
     expect(markdown, contains('42'));
   });
 
+  test('keeps a composition artifact for exact share replay', () {
+    final sources = shareIntelligentUiCardSources([
+      _card(
+        kind: IntelligentUiKind.composition,
+        title: 'Report',
+        definition: {
+          'title': 'Report',
+          'blocks': [
+            {'id': 'intro', 'type': 'markdown', 'text': 'intro text'},
+          ],
+        },
+      ),
+    ]);
+    expect(sources, hasLength(1));
+    expect(sources.single.artifact, isNotNull);
+    expect(sources.single.artifact!['kind'], 'composition');
+  });
+
   test('leaves out cards from other turns', () {
     final markdown = shareIntelligentUiMarkdown(
       [

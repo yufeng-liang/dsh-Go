@@ -20,11 +20,15 @@ String? shareIntelligentUiMarkdown(Iterable<IntelligentUiArtifact> artifacts, {r
 
 /// One UI card as it goes on a share card: an optional title and Markdown.
 class ShareIntelligentUiCard {
-  const ShareIntelligentUiCard({this.title, required this.markdown, this.widget});
+  const ShareIntelligentUiCard({this.title, required this.markdown, this.widget, this.artifact});
 
   final String? title;
   final String markdown;
   final Map<String, Object?>? widget;
+
+  /// Full renderer artifact for non-widget cards. Unlike [widget], this can
+  /// describe a declarative or composition card with charts and tables.
+  final Map<String, Object?>? artifact;
 }
 
 /// The UI cards that belong to [turn]'s seq range, latest version per UI id.
@@ -45,14 +49,16 @@ List<ShareIntelligentUiCard> shareIntelligentUiCards(
 
 /// Cards with the seq of the tool call that first showed them, for a share
 /// file's reply: the link viewer has no WebView, so it draws a card from this.
-List<({int originSeq, String? title, String markdown, Map<String, Object?>? widget})> shareIntelligentUiCardSources(
-  Iterable<IntelligentUiArtifact> artifacts,
-) {
+List<({int originSeq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>
+shareIntelligentUiCardSources(Iterable<IntelligentUiArtifact> artifacts) {
   final sorted = <IntelligentUiArtifact>[
     for (final ui in artifacts)
       if (ui.originSeq != null) ui,
   ]..sort((a, b) => (a.originSeq ?? 0).compareTo(b.originSeq ?? 0));
-  final out = <({int originSeq, String? title, String markdown, Map<String, Object?>? widget})>[];
+  final out =
+      <
+        ({int originSeq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})
+      >[];
   for (final card in sorted) {
     final body = _bodyOf(card).trim();
     if (body.isEmpty) continue;
@@ -62,6 +68,7 @@ List<({int originSeq, String? title, String markdown, Map<String, Object?>? widg
       title: title.isEmpty ? null : title,
       markdown: _withoutLeadingTitle(body, title),
       widget: card.kind == IntelligentUiKind.widget ? _widgetDefinition(card.definition) : null,
+      artifact: card.kind == IntelligentUiKind.widget ? null : _artifactDefinition(card),
     ));
   }
   return out;
@@ -92,6 +99,13 @@ String _plain(String text) => text
     .replaceAll(RegExp(r'\s+'), ' ')
     .trim()
     .toLowerCase();
+
+Map<String, Object?>? _artifactDefinition(IntelligentUiArtifact card) => {
+  'kind': card.kind.name,
+  'definition': card.definition,
+  if (card.title != null) 'title': card.title,
+  if (card.policy.isNotEmpty) 'policy': card.policy,
+};
 
 Map<String, Object?>? _widgetDefinition(Map<String, Object?> definition) {
   final html = _string(definition['html']);
