@@ -125,6 +125,33 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
 /// Lets a widget's grid/flex children shrink to the card width.
 const _widgetFitCss = '*{box-sizing:border-box!important;min-width:0!important}';
 
+/// widget iframe 里的普通 <a href> 会导航 iframe 并被 renderer 移除；捕获点击后
+/// 交给渲染器的 Bridge.openLink，由外层 WebView 打开系统浏览器。
+const _widgetLinkBridge = r'''
+(function(){
+  function openLink(href){
+    try {
+      if (window.Bridge && typeof window.Bridge.openLink === 'function') {
+        window.Bridge.openLink(href);
+        return;
+      }
+    } catch (e) {}
+    try { window.open(href, '_blank', 'noopener,noreferrer'); } catch (e) {}
+  }
+  function onClick(event){
+    var node = event.target;
+    var anchor = node && node.closest ? node.closest('a[href]') : null;
+    if (!anchor) return;
+    var href = anchor.getAttribute('href') || '';
+    if (!/^https:\/\//i.test(href)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openLink(href);
+  }
+  document.addEventListener('click', onClick, true);
+})();
+''';
+
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({super.key, required this.artifact, this.onSendPrompt, this.readOnly = false});
 
@@ -279,9 +306,14 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final definition = json['definition'];
     if (definition is! Map) return json;
     final css = definition['css'];
+    final jsFunctions = definition['jsFunctions'];
     return {
       ...json,
-      'definition': {...definition.cast<String, Object?>(), 'css': '${css is String ? css : ''}\n$_widgetFitCss'},
+      'definition': {
+        ...definition.cast<String, Object?>(),
+        'css': '${css is String ? css : ''}\n$_widgetFitCss',
+        'jsFunctions': '${jsFunctions is String ? jsFunctions : ''}\n$_widgetLinkBridge',
+      },
     };
   }
 
