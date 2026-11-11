@@ -914,7 +914,9 @@ class ShareIntelligentUiCardView extends StatelessWidget {
                 ),
               ],
             ),
-            if (card.title case final title?) ...[
+            // A widget card carries its own title inside its HTML; the native
+            // title would duplicate it (and the fallback renders it too).
+            if (card.title case final title? when card.widget == null) ...[
               const SizedBox(height: 10),
               Text(
                 title,
