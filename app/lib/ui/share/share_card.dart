@@ -831,7 +831,7 @@ class ShareCodeWell extends StatelessWidget {
 /// The share card's native frame for one intelligent-ui card. Public so the
 /// replay page can draw the same card when viewing a share link.
 class ShareIntelligentUiCardView extends StatelessWidget {
-  const ShareIntelligentUiCardView(this.card, {this.width});
+  const ShareIntelligentUiCardView(this.card, {super.key, this.width});
 
   final ShareIntelligentUiCard card;
   final double? width;
