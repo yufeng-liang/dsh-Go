@@ -126,8 +126,8 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 javaScriptCanOpenWindowsAutomatically = false
                 mediaPlaybackRequiresUserGesture = true
                 textZoom = 100
+                setSupportMultipleWindows(false)
             }
-            web.setSupportMultipleWindows(false)
             web.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
                 override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
