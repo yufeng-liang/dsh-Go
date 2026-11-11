@@ -41,6 +41,12 @@ final class ShareAnswer extends ShareBlock {
   final String markdown;
 }
 
+/// An intelligent-ui card from the reply: drawn as a card, not as Markdown.
+final class ShareIntelligentUi extends ShareBlock {
+  const ShareIntelligentUi(this.card);
+  final ShareIntelligentUiCard card;
+}
+
 /// A delivered file: an image preview, or a file tile with an excerpt.
 final class ShareFile extends ShareBlock {
   const ShareFile({
@@ -247,7 +253,7 @@ class ShareContent {
 
   bool get hasQuestion => blocks.any((b) => b is ShareQuestion);
   bool get hasMeta => model != null || stats != null || process.isNotEmpty;
-  bool get isConversation => blocks.any((b) => b is ShareAnswer || b is ShareQuestion);
+  bool get isConversation => blocks.any((b) => b is ShareAnswer || b is ShareQuestion || b is ShareIntelligentUi);
 
   /// Several replies: drawn as a chat-style long image, with a taller budget.
   bool get isLong => blocks.whereType<ShareAnswer>().length >= 2;
@@ -493,6 +499,11 @@ ShareLayout layoutShareBlocks(
       case ShareFile() || SharePlugin():
         out.add(block);
         left -= 240;
+      case ShareIntelligentUi():
+        final h = m.intelligentUi(block);
+        if (h > left && out.isNotEmpty) return ShareLayout(out, truncated: true);
+        out.add(block);
+        left -= h;
     }
   }
   return ShareLayout(out, truncated: false);
@@ -590,6 +601,11 @@ class _Metrics {
 
   /// One body line (bodyLarge 16 × the leading, rounded up).
   final double line;
+
+  double intelligentUi(ShareIntelligentUi block) {
+    final (_, _, used) = fitMarkdown(block.card.markdown, 320);
+    return 64 + (block.card.title == null ? 0 : 30) + used;
+  }
 
   double question(ShareQuestion q) {
     var h = 0.0;
@@ -845,15 +861,16 @@ ShareContent shareContentForReply(
   final reply = state.items.whereType<AssistantChatItem>().where((i) => i.key == message.key).firstOrNull ?? message;
   final question = questionFor(state.items, reply);
   final trace = turnOf(state.turns, reply.seq);
+  final answer = shareMarkdown(reply.text, images: images);
+  final cards = trace == null
+      ? const <ShareIntelligentUiCard>[]
+      : shareIntelligentUiCards(state.intelligentUis, startSeq: trace.startSeq, endSeq: trace.endSeq);
   return ShareContent(
     title: shareTitleText(state.title),
     blocks: [
       if (question != null) shareQuestionOf(question, images: images),
-      ShareAnswer([
-        shareMarkdown(reply.text, images: images),
-        if (trace != null)
-          ?shareIntelligentUiMarkdown(state.intelligentUis, startSeq: trace.startSeq, endSeq: trace.endSeq),
-      ].where((part) => part.trim().isNotEmpty).join('\n\n\n')),
+      if (answer.trim().isNotEmpty) ShareAnswer(answer),
+      for (final card in cards) ShareIntelligentUi(card),
     ],
     model: reply.model ?? trace?.lastModel.model ?? state.model?.model,
     stats: shareStats(trace),
@@ -890,20 +907,30 @@ ShareContent shareContentForItems(
   final replies = picked.whereType<AssistantChatItem>().toList();
   final traces = [for (final r in replies) turnOf(state.turns, r.seq)];
   final models = {for (final r in replies) r.model}..remove(null);
+  final blocks = <ShareBlock>[];
+  for (final item in picked) {
+    switch (item) {
+      case UserChatItem prompt:
+        blocks.add(shareQuestionOf(prompt, images: images));
+      case AssistantChatItem(:final text):
+        final answer = shareMarkdown(text, images: images);
+        if (answer.trim().isNotEmpty) blocks.add(ShareAnswer(answer));
+        if (turnOf(state.turns, item.seq) case final trace?) {
+          for (final card in shareIntelligentUiCards(
+            state.intelligentUis,
+            startSeq: trace.startSeq,
+            endSeq: trace.endSeq,
+          )) {
+            blocks.add(ShareIntelligentUi(card));
+          }
+        }
+      default:
+        throw StateError('not shareable');
+    }
+  }
   return ShareContent(
     title: shareTitleText(state.title),
-    blocks: [
-      for (final item in picked)
-        switch (item) {
-          final UserChatItem prompt => shareQuestionOf(prompt, images: images),
-          AssistantChatItem(:final text) => ShareAnswer([
-            shareMarkdown(text, images: images),
-            if (turnOf(state.turns, item.seq) case final trace?)
-              ?shareIntelligentUiMarkdown(state.intelligentUis, startSeq: trace.startSeq, endSeq: trace.endSeq),
-          ].where((part) => part.trim().isNotEmpty).join('\n\n\n')),
-          _ => throw StateError('not shareable'),
-        },
-    ],
+    blocks: blocks,
     model: models.length == 1 ? models.single : (models.isEmpty ? state.model?.model : null),
     stats: shareStatsOf(traces),
     process: tools ? shareProcess(traces) : const [],

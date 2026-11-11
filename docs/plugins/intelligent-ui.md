@@ -20,7 +20,7 @@
 
 ## 分享
 
-- 分享卡片是 Flutter `RepaintBoundary` 截图，WebView 里的平台视图不会被画进截图，所以分享时会把卡片定义里的标题、文本、列表、表格、代码、统计、徽章、进度等转成 Markdown，跟回复正文一起放进分享图。
+- 分享卡片是 Flutter `RepaintBoundary` 截图，WebView 里的平台视图不会被画进截图，所以分享时会把卡片定义里的标题、文本、列表、表格、代码、统计、徽章、进度等转成 Markdown，并用原生 Flutter 卡片壳放进分享图；分享图不依赖 WebView。
 - `ui_render_widget` 的 HTML 只提取可见文本，不执行脚本；交互、图表里的动态数据不会出现在分享图里。
 - patch 后的卡片按原始 `originSeq` 归到首次展示它的回合，并按最新版本渲染，因此分享卡片和聊天里看到的内容一致。
 
