@@ -208,7 +208,6 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   // permanent blank tail; taller content grows on the next resize report.
   int _height = 96;
   int _textZoom = 100;
-  Color _background = Colors.transparent;
   String _locale = 'zh-CN';
   String? _error;
 
@@ -235,10 +234,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _textZoom = textZoom;
       unawaited(_guard?.setTextZoom(_textZoom) ?? Future<void>.value());
     }
-    _background = Theme.of(context).scaffoldBackgroundColor;
     final controller = _controller;
     if (controller != null) {
-      unawaited(controller.setBackgroundColor(_background));
+      unawaited(controller.setBackgroundColor(Colors.transparent));
     }
     final locale = _localeOf(context);
     if (locale != _locale) {
@@ -279,7 +277,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
-    final background = _background;
+    const background = Colors.transparent;
     try {
       final code = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
       if (!mounted || generation != _loadGeneration) return;
