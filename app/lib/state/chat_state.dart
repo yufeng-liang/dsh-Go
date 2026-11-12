@@ -294,6 +294,7 @@ class ChatState {
     this.goal,
     this.clockSkew = Duration.zero,
     this.intelligentUis = const [],
+    this.intelligentUiRevision = 0,
   });
 
   final List<ChatItem> items;
@@ -370,6 +371,10 @@ class ChatState {
   /// ToolCallRow 上（见 chat_rows.dart 的 deriveRows）。
   final List<IntelligentUiArtifact> intelligentUis;
 
+  /// Monotonic revision of [intelligentUis]. Consumers can compare this
+  /// integer instead of deep-comparing artifact trees on every rebuild.
+  final int intelligentUiRevision;
+
   /// The running turn's trace; null when idle.
   TurnTrace? get runningTurn {
     final last = turns.isEmpty ? null : turns.last;
@@ -406,6 +411,7 @@ class ChatState {
     Set<String>? autoAnswered,
     List<CommandNotice>? commands,
     List<IntelligentUiArtifact>? intelligentUis,
+    int? intelligentUiRevision,
   }) => ChatState(
     items: items,
     running: running,
@@ -434,6 +440,7 @@ class ChatState {
     goal: goal,
     clockSkew: clockSkew,
     intelligentUis: intelligentUis ?? this.intelligentUis,
+    intelligentUiRevision: intelligentUiRevision ?? this.intelligentUiRevision,
   );
 }
 
@@ -479,6 +486,10 @@ class ChatController extends Notifier<ChatState> {
   bool _dirty = false;
   bool _intelligentUiDirty = true;
   List<IntelligentUiArtifact> _intelligentUis = const [];
+  IntelligentUiProjection? _uiProjection;
+  final List<SessionLogEvent> _pendingUiEvents = [];
+  bool _uiProjectionNeedsReplay = true;
+  int _intelligentUiRevision = 0;
   ModelSelection? _model;
   Object? _modelChange;
   bool _defaultModelSaveFailed = false;
@@ -583,11 +594,18 @@ class ChatController extends Notifier<ChatState> {
       _autoApprove = false;
       _autoAnswered = const {};
       _intelligentUis = const [];
+      _intelligentUiRevision = 0;
+      _uiProjection = null;
+      _pendingUiEvents.clear();
+      _uiProjectionNeedsReplay = true;
     }
     // Async continuations from the previous build no longer own these marks.
     _modelChange = null;
     _historyRead = null;
     _intelligentUiDirty = true;
+    _uiProjection = null;
+    _pendingUiEvents.clear();
+    _uiProjectionNeedsReplay = true;
     _moving.clear();
     _synchronized = false;
     _syncScope = Object();
@@ -709,6 +727,7 @@ class ChatController extends Notifier<ChatState> {
     autoAnswered: _autoAnswered,
     clockSkew: _skew ?? Duration.zero,
     intelligentUis: _intelligentUis,
+    intelligentUiRevision: _intelligentUiRevision,
   );
 
   void _markSyncing({SessionFollowEpoch? epoch, bool building = false}) {
@@ -855,10 +874,22 @@ class ChatController extends Notifier<ChatState> {
             final before = reconcile ? _inboxIds() : const <String>{};
             if (event is SessionSnapshotEvent) _trackSnapshotClaims(event.events);
             final changed = _transcript.apply(event);
-            if (event is SessionSnapshotEvent ||
-                event is ToolCallEvent ||
+            if (event is SessionSnapshotEvent) {
+              _uiProjection = null;
+              _pendingUiEvents.clear();
+              _uiProjectionNeedsReplay = true;
+              _intelligentUiDirty = true;
+            } else if (event is ToolResultEvent && event.surfaceOp != null && event.surfaceOp != 'append') {
+              // A replace/retract event rewrites earlier log rows; replay the
+              // whole projection rather than trying to invert it.
+              _uiProjection = null;
+              _pendingUiEvents.clear();
+              _uiProjectionNeedsReplay = true;
+              _intelligentUiDirty = true;
+            } else if (event is ToolCallEvent ||
                 event is ToolResultEvent ||
                 (event is SessionLogEvent && event.type == 'tool/ptc-dispatch')) {
+              if (event is SessionLogEvent) _pendingUiEvents.add(event);
               _intelligentUiDirty = true;
             }
             if (_awayLong && !_quiet && _transcript.running) scheduleMicrotask(_quietIfRunning);
@@ -1200,14 +1231,24 @@ class ChatController extends Notifier<ChatState> {
     final pending = _placePending();
     if (_intelligentUiDirty) {
       try {
-        _intelligentUis = IntelligentUiProjector.project(
-          _transcript.events,
-          hostId: ref.read(activeHostProvider).id,
-          sessionId: sessionId,
-        );
+        final hostId = ref.read(activeHostProvider).id;
+        if (_uiProjectionNeedsReplay || _uiProjection == null) {
+          _uiProjection = IntelligentUiProjection(hostId: hostId, sessionId: sessionId);
+          _uiProjection!.applyAll(_transcript.events);
+          _uiProjectionNeedsReplay = false;
+        } else {
+          _uiProjection!.applyPending(_pendingUiEvents);
+        }
+        _pendingUiEvents.clear();
+        _intelligentUis = _uiProjection!.artifacts;
+        _intelligentUiRevision++;
       } catch (_) {
         // 第三方插件的事件不可信：投影失败时只丢掉卡片，不影响聊天本身。
         _intelligentUis = const [];
+        _uiProjection = null;
+        _pendingUiEvents.clear();
+        _uiProjectionNeedsReplay = true;
+        _intelligentUiRevision++;
       }
       _intelligentUiDirty = false;
     }
@@ -1239,6 +1280,7 @@ class ChatController extends Notifier<ChatState> {
       goal: _transcript.goal,
       clockSkew: _skew ?? Duration.zero,
       intelligentUis: _intelligentUis,
+      intelligentUiRevision: _intelligentUiRevision,
     );
   }
 
@@ -1392,8 +1434,15 @@ class ChatController extends Notifier<ChatState> {
           state = state.copyWith(pending: _placePending());
         }
       }
-      final notice = await _deliver(operation, body, attachments, receipts, requestId: requestId, mode: promptMode,
-        deliveryAllowed: deliveryAllowed);
+      final notice = await _deliver(
+        operation,
+        body,
+        attachments,
+        receipts,
+        requestId: requestId,
+        mode: promptMode,
+        deliveryAllowed: deliveryAllowed,
+      );
       _sent();
       if (!_currentOperation(operation)) return false;
       state = state.copyWith(error: stopFailed, notice: notice);
@@ -1942,6 +1991,7 @@ class ChatController extends Notifier<ChatState> {
         goal: state.goal,
         clockSkew: state.clockSkew,
         intelligentUis: state.intelligentUis,
+        intelligentUiRevision: state.intelligentUiRevision,
       );
       return false;
     } finally {
@@ -1978,6 +2028,9 @@ class ChatController extends Notifier<ChatState> {
       if (!current()) return;
       _transcript.prependHistory(page);
       _dropEchoed(page.events);
+      _uiProjection = null;
+      _pendingUiEvents.clear();
+      _uiProjectionNeedsReplay = true;
       _intelligentUiDirty = true;
       // A done event may have arrived before its run was loaded. Fold the
       // merged log in seq order so paging cannot resurrect a finished command.

@@ -217,11 +217,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
 }
 
 /// Pictures on [content]'s card are in before it is captured.
-Future<void> settleShareCard(
-  BuildContext context,
-  ShareContent content, {
-  required ShareTemplate template,
-}) async {
+Future<void> settleShareCard(BuildContext context, ShareContent content, {required ShareTemplate template}) async {
   final pending = <Future<void>>[];
   final dpr = MediaQuery.devicePixelRatioOf(context);
   final contentWidth = ShareCard.contentWidth(template);
@@ -247,7 +243,7 @@ Future<void> settleShareCard(
     }
   }
   try {
-    await Future.wait(pending).timeout(const Duration(seconds: 4));
+    await Future.wait(pending).timeout(Duration(seconds: 4 + pending.length));
   } catch (_) {}
   await WidgetsBinding.instance.endOfFrame;
 }

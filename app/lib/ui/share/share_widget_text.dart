@@ -30,7 +30,7 @@ class ShareWidgetTextView extends StatelessWidget {
       scale: 13 / 16,
       height: 1.45,
     ).copyWith(color: Theme.of(context).colorScheme.onSurface);
-    final blocks = _blocks(widget, base, title);
+    final blocks = _blocksCached(widget, base, title);
     if (blocks.isEmpty) return MarkdownBody(text: markdown, selectable: false, scale: 13 / 16);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -38,10 +38,7 @@ class ShareWidgetTextView extends StatelessWidget {
       children: [
         for (final (i, block) in blocks.indexed) ...[
           if (i > 0) SizedBox(height: block.gapBefore),
-          Text.rich(
-            TextSpan(children: block.spans),
-            style: block.style,
-          ),
+          Text.rich(TextSpan(children: block.spans), style: block.style),
         ],
       ],
     );
@@ -137,6 +134,24 @@ List<_Block> _blocks(Map<String, Object?> widget, TextStyle base, String? title)
     walk(child, baseStyle);
   }
   return out;
+}
+
+// Parsing the same widget HTML/CSS on every share-card rebuild is avoidable:
+// keep a tiny identity-based cache. The key includes the inherited text style
+// so light/dark theme changes do not reuse stale colours.
+final _blocksCache = <int, List<_Block>>{};
+const _blocksCacheLimit = 32;
+
+List<_Block> _blocksCached(Map<String, Object?> widget, TextStyle base, String? title) {
+  final key = Object.hash(identityHashCode(widget), base, title);
+  final cached = _blocksCache[key];
+  if (cached != null) return cached;
+  final blocks = _blocks(widget, base, title);
+  if (_blocksCache.length >= _blocksCacheLimit) {
+    _blocksCache.remove(_blocksCache.keys.first);
+  }
+  _blocksCache[key] = blocks;
+  return blocks;
 }
 
 bool _isBlock(String tag) => const {

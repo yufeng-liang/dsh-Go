@@ -622,7 +622,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       s.autoAnswered,
       s.commands,
       s.turns,
-      intelligentUis,
+      s.intelligentUiRevision,
     );
     if (_rowsInputs == inputs) {
       // Nothing the rows are made of changed, but what they read from the
@@ -656,12 +656,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     if (oldestTurn != null) _oldestRowSeq = math.min(_oldestRowSeq ?? oldestTurn, oldestTurn);
     final prepended = previousOldest != null && _oldestRowSeq != null && _oldestRowSeq! < previousOldest;
     final hadPending = _rows.any((r) => r is PendingRow);
-    _rows = _rowCache.update(
-      s,
-      foldTurns: foldTurns,
-      artifacts: artifacts,
-      intelligentUis: intelligentUis,
-    );
+    _rows = _rowCache.update(s, foldTurns: foldTurns, artifacts: artifacts, intelligentUis: intelligentUis);
     _index = _rowCache.index;
     // Only a draft streaming on keeps the other rows' widgets: anything else
     // may change what a row shows beyond its own item (running, pending,
