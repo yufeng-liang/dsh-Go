@@ -334,8 +334,12 @@ Map<String, Object?>? _widgetDefinition(Object? json) {
   final css = json['css'];
   if (html is! String || html.isEmpty || html.length > _maxUiWidget) return null;
   if (css != null && (css is! String || css.length > _maxUiWidget)) return null;
-  if (html.contains(RegExp(r'<script[\s>]', caseSensitive: false))) return null;
-  return {'html': html, if (css is String && css.isNotEmpty) 'css': css};
+  final sanitized = IntelligentUiProjector.sanitizeExternalArtifact({
+    'kind': 'widget',
+    'definition': {'html': html, if (css is String && css.isNotEmpty) 'css': css},
+  });
+  final definition = sanitized?['definition'];
+  return definition is Map ? Map<String, Object?>.from(definition) : null;
 }
 
 Map<String, Object?>? _artifactDefinition(Object? json) {
