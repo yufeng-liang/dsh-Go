@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -372,7 +373,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     if (definition is! Map) return json;
     final css = definition['css'];
     final jsFunctions = definition['jsFunctions'];
-    final definitionHash = definition.hashCode;
+    final definitionHash = sha1.convert(utf8.encode(jsonEncode(definition))).toString();
     return {
       ...json,
       // The renderer persists widget height under uiId; fold the current
