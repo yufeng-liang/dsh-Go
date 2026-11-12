@@ -82,6 +82,9 @@ class IntelligentUiProjector {
   const IntelligentUiProjector._();
 
   static const _tools = {'ui_render', 'ui_render_widget', 'ui_compose', 'ui_patch'};
+
+  /// Whether a tool call can produce a portable UI artifact.
+  static bool isUiToolName(String name) => _tools.contains(name);
   static const _maxArgumentChars = 480000;
   static const _maxComponents = 300;
   static const _maxTreeDepth = 24;
