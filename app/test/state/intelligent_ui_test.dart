@@ -45,6 +45,20 @@ ToolResultEvent _result(int seq, String callId, {Object? meta, bool isError = fa
 
 String _json(Object? value) => const JsonEncoder().convert(value);
 
+AssistantMessageEvent _assistantWithToolCall(int seq, String callId, String name) => AssistantMessageEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  const {},
+  turn: 1,
+  step: 1,
+  message: Message(
+    id: 'm$seq',
+    role: MessageRole.assistant,
+    parts: [ToolCallPart(id: callId, name: name, arguments: '{}')],
+    source: MessageSource('model', const {}),
+  ),
+);
+
 void main() {
   group('IntelligentUiProjector', () {
     test('projects ui_render and applies a stale-safe patch', () {
@@ -110,6 +124,22 @@ void main() {
       expect(artifacts, hasLength(1));
       expect(artifacts.single.uiId, 'sub-a');
       expect(artifacts.single.version, 1);
+    });
+
+    test('maps PTC to the assistant message seq when the call is listed there', () {
+      final events = <SessionLogEvent>[
+        _assistantWithToolCall(1, 'root-a', 'run_code'),
+        UnknownEvent(2, DateTime(2026, 1, 1), 'tool/ptc-dispatch', {
+          'name': 'ui_render',
+          'subCallId': 'sub-a',
+          'rootCallId': 'root-a',
+          'arguments': _tree(),
+          'meta': {'ok': true},
+        }),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.originSeq, 1);
     });
 
     test('patches one composition block without touching its siblings', () {
