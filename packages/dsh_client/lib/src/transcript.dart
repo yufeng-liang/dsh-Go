@@ -307,6 +307,17 @@ class ChatTranscript {
     ];
   }
 
+  /// Drops events hidden by a tool/result `surfaceOp: replace` record.
+  void _applySurfaceOp(SessionLogEvent event) {
+    final op = event is ToolResultEvent ? event.surfaceOp : null;
+    if (op is! Map || asString(op['op']) != 'replace') return;
+    final start = asInt(op['startSeq']);
+    final end = asInt(op['endSeq']);
+    if (start == null && end == null) return;
+    _log.removeWhere((seq, _) =>
+        (start == null || seq >= start) && (end == null || seq <= end));
+  }
+
   /// Applies one event; returns `true` when [items] may have changed.
   bool apply(DshEvent event) {
     switch (event) {
@@ -320,6 +331,7 @@ class ChatTranscript {
         _drafts.clear();
         _runningOverride = null;
         for (final e in event.events) {
+          _applySurfaceOp(e);
           _log[e.seq] = e;
         }
         _recomputeTitle();
@@ -339,6 +351,7 @@ class ChatTranscript {
         final previousLast = _log.lastKey();
         final appended = previousLast == null || event.seq > previousLast;
         final fresh = event.seq > cursor;
+        _applySurfaceOp(event);
         _log[event.seq] = event;
         if (fresh) cursor = event.seq;
         switch (event) {
@@ -417,6 +430,7 @@ class ChatTranscript {
   /// Merges an older page from `DshClient.history(beforeSeq: oldestSeq)`.
   void prependHistory(HistoryPage page) {
     for (final e in page.events) {
+      _applySurfaceOp(e);
       _log[e.seq] = e;
     }
     hasMoreHistory = page.hasMore;

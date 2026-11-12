@@ -78,4 +78,11 @@ class UiActionGuard {
   void invalidate() {
     _pending = null;
   }
+
+  /// Clears all replay state when the renderer document reloads.
+  void reset() {
+    _lastId = 0;
+    _lastAdmittedAt = null;
+    _pending = null;
+  }
 }

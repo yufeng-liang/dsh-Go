@@ -71,7 +71,7 @@ final class ToolCallRow extends ChatRow {
   /// 变成「只有卡片」,不当新内容播入场。
   final ToolCardPlacement card;
   @override
-  String get key => item.key;
+  String get key => uiArtifact == null ? item.key : '${item.key}#${uiArtifact!.uiId}@${uiArtifact!.version}';
 }
 
 /// 连续 ≥ [toolGroupThreshold] 次工具调用收成一组。
@@ -222,10 +222,14 @@ List<ChatRow> deriveRows({
   debugDeriveRowsCount++;
   final rows = <ChatRow>[];
   final attached = <String>{};
-  final uiByCall = {for (final ui in intelligentUis) ui.uiId: ui};
-  final uiBySeq = {
-    for (final ui in intelligentUis) ?ui.originSeq: ui,
-  };
+  final uiByCall = <String, List<IntelligentUiArtifact>>{};
+  final uiBySeq = <int, List<IntelligentUiArtifact>>{};
+  for (final ui in intelligentUis) {
+    (uiByCall[ui.uiId] ??= []).add(ui);
+    if (ui.originSeq case final seq?) (uiBySeq[seq] ??= []).add(ui);
+  }
+  List<IntelligentUiArtifact> uiFor(ToolChatItem tool) =>
+      uiByCall[tool.callId] ?? uiBySeq[tool.seq] ?? const [];
   var tools = <ToolChatItem>[];
   var nextCommand = 0;
 
@@ -249,17 +253,30 @@ List<ChatRow> deriveRows({
         rows.add(ToolGroupRow(run, live: live));
       } else {
         for (final tool in run) {
-          rows.add(ToolCallRow(tool, uiArtifact: uiByCall[tool.callId] ?? uiBySeq[tool.seq]));
+          final uis = uiFor(tool);
+          if (uis.isEmpty) {
+            rows.add(ToolCallRow(tool));
+          } else {
+            for (final ui in uis) {
+              rows.add(ToolCallRow(tool, uiArtifact: ui));
+            }
+          }
         }
       }
       run = <ToolChatItem>[];
     }
 
     for (final tool in tools) {
-      final ui = uiByCall[tool.callId] ?? uiBySeq[tool.seq];
-      if (hasToolCard(tool) || ui != null) {
+      final uis = uiFor(tool);
+      if (hasToolCard(tool) || uis.isNotEmpty) {
         flushRun();
-        rows.add(ToolCallRow(tool, uiArtifact: ui));
+        if (uis.isEmpty) {
+          rows.add(ToolCallRow(tool));
+        } else {
+          for (final ui in uis) {
+            rows.add(ToolCallRow(tool, uiArtifact: ui));
+          }
+        }
       } else {
         run.add(tool);
       }

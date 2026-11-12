@@ -651,7 +651,10 @@ class DshClient {
     return HistoryPage(
       asListOrEmpty(
         value['records'],
-      ).map((r) => SessionLogEvent.fromJson(asMapOrEmpty(r)['event'])).toList(growable: false),
+      ).map((r) {
+        final record = asMapOrEmpty(r);
+        return SessionLogEvent.fromJson(record['event'], surfaceOp: record['surfaceOp']);
+      }).toList(growable: false),
       value['hasMore'] == true,
     );
   }

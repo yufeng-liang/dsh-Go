@@ -139,7 +139,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     });
     String? error;
     try {
-      await settleShareCard(context, _content);
+      await settleShareCard(context, _content, template: _style.templateFor(Theme.of(context).brightness));
       final png = await captureShareCard(_cardKey);
       final file = await exporter.write(png);
       if (busy == _Busy.sharing) {
@@ -217,9 +217,14 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
 }
 
 /// Pictures on [content]'s card are in before it is captured.
-Future<void> settleShareCard(BuildContext context, ShareContent content) async {
+Future<void> settleShareCard(
+  BuildContext context,
+  ShareContent content, {
+  required ShareTemplate template,
+}) async {
   final pending = <Future<void>>[];
   final dpr = MediaQuery.devicePixelRatioOf(context);
+  final contentWidth = ShareCard.contentWidth(template);
   for (final block in content.blocks) {
     if (block case ShareFile(:final image?)) {
       pending.add(
@@ -231,7 +236,7 @@ Future<void> settleShareCard(BuildContext context, ShareContent content) async {
       pending.add(() async {
         final bytes = await IntelligentUiSnapshot.capture(
           card: card,
-          width: ShareCard.width - 32,
+          width: contentWidth,
           dark: Theme.of(context).brightness == Brightness.dark,
           locale: Localizations.localeOf(context).toLanguageTag(),
         );

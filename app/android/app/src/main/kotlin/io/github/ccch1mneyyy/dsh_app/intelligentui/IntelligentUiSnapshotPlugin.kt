@@ -66,6 +66,8 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
 
     override fun onDetachedFromActivity() {
         activity = null
+        jobs.toList().forEach { it.finish(null) }
+        jobs.clear()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -84,9 +86,14 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                     return
                 }
                 main.post {
-                    val job = Capture(activity, html, width, result)
-                    jobs.add(job)
-                    job.start()
+                    try {
+                        val job = Capture(activity, html, width, result)
+                        jobs.add(job)
+                        job.start()
+                    } catch (error: Throwable) {
+                        Log.w(TAG, "capture setup failed: $error")
+                        result.error("capture_failed", "Could not create capture view", null)
+                    }
                 }
             }
             else -> result.notImplemented()
@@ -100,6 +107,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private val result: MethodChannel.Result,
     ) {
         private val done = AtomicBoolean(false)
+        private val measured = AtomicBoolean(false)
         private val web = WebView(activity)
         private var holder: FrameLayout? = null
         private var failure: String? = null
@@ -174,6 +182,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         }
 
         private fun measureAndDraw(pxWidth: Int, density: Float) {
+            if (done.get() || !measured.compareAndSet(false, true)) return
             web.evaluateJavascript(
                 "(function(){var b=document.body,u=document.getElementById('ui'),h=0;" +
                     "if(b){h=Math.max(h,b.scrollHeight,b.getBoundingClientRect().height)}" +
@@ -220,11 +229,17 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
             }
         }
 
-        /** Trim trailing rows that are fully transparent or plain white. */
+        /** Trim trailing rows that are fully transparent or match the corner background. */
         private fun cropBlankBottom(source: Bitmap): Bitmap {
             val width = source.width
             val height = source.height
             if (width <= 0 || height <= 0) return source
+            val background = source.getPixel(0, 0)
+            val bgAlpha = (background ushr 24) and 0xFF
+            val bgRed = (background ushr 16) and 0xFF
+            val bgGreen = (background ushr 8) and 0xFF
+            val bgBlue = background and 0xFF
+            val whiteBackground = bgAlpha > 8 && bgRed >= 248 && bgGreen >= 248 && bgBlue >= 248
             val row = IntArray(width)
             var bottom = height - 1
             while (bottom >= 0) {
@@ -236,7 +251,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                     val red = (pixel ushr 16) and 0xFF
                     val green = (pixel ushr 8) and 0xFF
                     val blue = pixel and 0xFF
-                    if (red < 248 || green < 248 || blue < 248) {
+                    if (!whiteBackground || red < 248 || green < 248 || blue < 248) {
                         blank = false
                         break
                     }
@@ -288,6 +303,6 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private const val DRAW_DELAY_MS = 200L
         private const val PAGE_SETTLE_MS = 900L
         private const val INITIAL_HEIGHT_PX = 1600
-        private const val MAX_PX_HEIGHT = 12000
+        private const val MAX_PX_HEIGHT = 8000
     }
 }

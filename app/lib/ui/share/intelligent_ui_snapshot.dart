@@ -66,7 +66,7 @@ class IntelligentUiSnapshot {
   const IntelligentUiSnapshot._();
 
   static const _channel = MethodChannel('dsh/intelligent_ui_snapshot');
-  static const _maxCache = 16;
+  static const _maxCache = 8;
   static final _cache = <String, Future<Uint8List?>>{};
   static Future<String>? _rendererCode;
 
@@ -86,6 +86,9 @@ class IntelligentUiSnapshot {
     if (_cache.length >= _maxCache) _cache.remove(_cache.keys.first);
     final future = _capture(card: card, width: width, dark: dark, locale: locale);
     _cache[key] = future;
+    future.then((value) {
+      if (value == null) _cache.remove(key);
+    });
     return future;
   }
 

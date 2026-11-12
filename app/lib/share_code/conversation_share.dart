@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import '../l10n/l10n.dart';
 import 'share_codec.dart';
 import 'share_models.dart';
+import '../state/intelligent_ui.dart';
 
 /// Body version a conversation is written with. Older apps read `v: 1`
 /// only, so they say 「需要更新」 instead of failing on an unknown kind.
@@ -293,12 +294,14 @@ class ConversationUiCard {
   static ConversationUiCard? fromJson(Object? json) {
     if (json is! Map) return null;
     final markdown = _str(json['md'], _maxUiMarkdown);
-    if (markdown == null || markdown.isEmpty) return null;
+    final widget = _widgetDefinition(json['widget']);
+    final artifact = _artifactDefinition(json['artifact']);
+    if ((markdown == null || markdown.isEmpty) && widget == null && artifact == null) return null;
     return ConversationUiCard(
       title: _str(json['title'], 120),
-      markdown: markdown,
-      widget: _widgetDefinition(json['widget']),
-      artifact: _artifactDefinition(json['artifact']),
+      markdown: markdown ?? '',
+      widget: widget,
+      artifact: artifact,
     );
   }
 
@@ -337,18 +340,8 @@ Map<String, Object?>? _widgetDefinition(Object? json) {
 
 Map<String, Object?>? _artifactDefinition(Object? json) {
   if (json is! Map) return null;
-  final kind = json['kind'];
-  final definition = json['definition'];
-  if (kind is! String || definition is! Map) return null;
-  if (kind != 'declarative' && kind != 'widget' && kind != 'composition') return null;
   if (jsonEncode(json).length > _maxUiArtifact) return null;
-  final policy = json['policy'];
-  return {
-    'kind': kind,
-    'definition': Map<String, Object?>.from(definition),
-    if (json['title'] is String) 'title': json['title'],
-    if (policy is Map) 'policy': Map<String, Object?>.from(policy),
-  };
+  return IntelligentUiProjector.sanitizeExternalArtifact(json);
 }
 
 final class ToolEntry extends ConversationEntry {

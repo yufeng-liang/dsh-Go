@@ -1238,9 +1238,10 @@ final class SessionSnapshotEvent extends DshEvent {
       sessionId: sessionId,
       header: SessionHeader.fromJson(map['header']),
       cursor: asInt(map['cursor']) ?? -1,
-      events: asListOrEmpty(
-        map['records'],
-      ).map((r) => SessionLogEvent.fromJson(asMapOrEmpty(r)['event'])).toList(growable: false),
+      events: asListOrEmpty(map['records']).map((r) {
+        final record = asMapOrEmpty(r);
+        return SessionLogEvent.fromJson(record['event'], surfaceOp: record['surfaceOp']);
+      }).toList(growable: false),
       hasMore: map['hasMore'] == true,
       projections: SessionProjections.fromJson(map['projections']),
       assistantRevision: asInt(stream?['revision']),
@@ -1331,8 +1332,9 @@ sealed class SessionLogEvent extends DshEvent {
   final Map<String, Object?> data;
 
   /// Parses one `SessionWireEvent`; never throws.
-  static SessionLogEvent fromJson(Object? json) {
+  static SessionLogEvent fromJson(Object? json, {Object? surfaceOp}) {
     final map = asMapOrEmpty(json);
+    final eventSurfaceOp = surfaceOp ?? map['surfaceOp'];
     final seq = asInt(map['seq']) ?? -1;
     final time = asEpochMs(map['time']) ?? DateTime.fromMillisecondsSinceEpoch(0);
     final type = asString(map['type']) ?? '';
@@ -1392,6 +1394,7 @@ sealed class SessionLogEvent extends DshEvent {
                   asString(error['code']) ?? 'UNKNOWN',
                   asString(error['reason']),
                 ),
+          surfaceOp: eventSurfaceOp,
         );
       case 'session/title':
         return TitleChangedEvent(
@@ -1622,6 +1625,7 @@ final class ToolResultEvent extends SessionLogEvent {
     required this.step,
     required this.message,
     this.failure,
+    this.surfaceOp,
   }) : super(seq, time, 'tool/result', data);
   final int turn;
   final int step;
@@ -1629,6 +1633,9 @@ final class ToolResultEvent extends SessionLogEvent {
   /// Tool-role message: [Message.toolCallId], [Message.isError], content parts.
   final Message message;
   final ToolFailure? failure;
+
+  /// Surface replacement metadata carried by the outer session record.
+  final Object? surfaceOp;
 
   String get callId => message.toolCallId ?? '';
   bool get isError => message.isError;
@@ -2076,7 +2083,7 @@ DshEvent parseFollowFrame(String sessionId, Object? value, {bool isResync = fals
     case 'snapshot':
       return SessionSnapshotEvent.fromJson(sessionId, map, isResync: isResync);
     case 'event':
-      return SessionLogEvent.fromJson(map!['event']);
+      return SessionLogEvent.fromJson(map!['event'], surfaceOp: map['surfaceOp']);
     case 'assistant-stream':
       return AssistantStreamEvent.fromFrame(map!['frame']);
     default:

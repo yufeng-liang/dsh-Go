@@ -60,8 +60,8 @@ shareIntelligentUiCardSources(Iterable<IntelligentUiArtifact> artifacts) {
         ({int originSeq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})
       >[];
   for (final card in sorted) {
-    final body = _bodyOf(card).trim();
-    if (body.isEmpty) continue;
+    final rawBody = _bodyOf(card).trim();
+    final body = rawBody.isEmpty ? appL10n.chatIntelligentUiTitle : rawBody;
     final title = (card.title ?? '').trim();
     out.add((
       originSeq: card.originSeq!,
