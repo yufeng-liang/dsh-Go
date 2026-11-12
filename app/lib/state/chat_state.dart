@@ -488,6 +488,7 @@ class ChatController extends Notifier<ChatState> {
   List<IntelligentUiArtifact> _intelligentUis = const [];
   IntelligentUiProjection? _uiProjection;
   final List<SessionLogEvent> _pendingUiEvents = [];
+  final Set<String> _uiToolCalls = {};
   bool _uiProjectionNeedsReplay = true;
   int _intelligentUiRevision = 0;
   ModelSelection? _model;
@@ -597,6 +598,7 @@ class ChatController extends Notifier<ChatState> {
       _intelligentUiRevision = 0;
       _uiProjection = null;
       _pendingUiEvents.clear();
+      _uiToolCalls.clear();
       _uiProjectionNeedsReplay = true;
     }
     // Async continuations from the previous build no longer own these marks.
@@ -605,6 +607,7 @@ class ChatController extends Notifier<ChatState> {
     _intelligentUiDirty = true;
     _uiProjection = null;
     _pendingUiEvents.clear();
+    _uiToolCalls.clear();
     _uiProjectionNeedsReplay = true;
     _moving.clear();
     _synchronized = false;
@@ -877,6 +880,7 @@ class ChatController extends Notifier<ChatState> {
             if (event is SessionSnapshotEvent) {
               _uiProjection = null;
               _pendingUiEvents.clear();
+              _uiToolCalls.clear();
               _uiProjectionNeedsReplay = true;
               _intelligentUiDirty = true;
             } else if (event is ToolResultEvent && event.surfaceOp != null && event.surfaceOp != 'append') {
@@ -884,12 +888,22 @@ class ChatController extends Notifier<ChatState> {
               // whole projection rather than trying to invert it.
               _uiProjection = null;
               _pendingUiEvents.clear();
+              _uiToolCalls.clear();
               _uiProjectionNeedsReplay = true;
               _intelligentUiDirty = true;
-            } else if (event is ToolCallEvent ||
-                event is ToolResultEvent ||
-                (event is SessionLogEvent && event.type == 'tool/ptc-dispatch')) {
-              if (event is SessionLogEvent) _pendingUiEvents.add(event);
+            } else if (event is ToolCallEvent) {
+              if (IntelligentUiProjector.isUiToolName(event.name)) {
+                _uiToolCalls.add(event.callId);
+                _pendingUiEvents.add(event);
+                _intelligentUiDirty = true;
+              }
+            } else if (event is ToolResultEvent) {
+              if (_uiToolCalls.contains(event.callId)) {
+                _pendingUiEvents.add(event);
+                _intelligentUiDirty = true;
+              }
+            } else if (event is SessionLogEvent && event.type == 'tool/ptc-dispatch') {
+              _pendingUiEvents.add(event);
               _intelligentUiDirty = true;
             }
             if (_awayLong && !_quiet && _transcript.running) scheduleMicrotask(_quietIfRunning);
@@ -2030,6 +2044,7 @@ class ChatController extends Notifier<ChatState> {
       _dropEchoed(page.events);
       _uiProjection = null;
       _pendingUiEvents.clear();
+      _uiToolCalls.clear();
       _uiProjectionNeedsReplay = true;
       _intelligentUiDirty = true;
       // A done event may have arrived before its run was loaded. Fold the
