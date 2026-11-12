@@ -234,6 +234,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _textZoom = textZoom;
       unawaited(_guard?.setTextZoom(_textZoom) ?? Future<void>.value());
     }
+    final controller = _controller;
+    if (controller != null) {
+      unawaited(controller.setBackgroundColor(Theme.of(context).scaffoldBackgroundColor));
+    }
     final locale = _localeOf(context);
     if (locale != _locale) {
       _locale = locale;
@@ -273,12 +277,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    final background = Theme.of(context).scaffoldBackgroundColor;
     try {
       final code = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
       if (!mounted || generation != _loadGeneration) return;
       final controller = WebViewController();
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await controller.setBackgroundColor(Colors.transparent);
+      await controller.setBackgroundColor(background);
       await controller.addJavaScriptChannel('Dsh', onMessageReceived: (message) => unawaited(_onMessage(message)));
       await controller.setNavigationDelegate(
         NavigationDelegate(
