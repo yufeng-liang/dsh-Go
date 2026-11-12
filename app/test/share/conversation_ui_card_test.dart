@@ -61,6 +61,16 @@ void main() {
     expect(card!.widget, isNull);
   });
 
+  test('strips inline event handlers from widget html', () {
+    final card = ConversationUiCard.fromJson({
+      'md': 'body',
+      'widget': {'html': '<p onclick="steal()">hello</p>'},
+    });
+    expect(card, isNotNull);
+    expect(card!.widget!['html'], isNot(contains('onclick')));
+    expect(card.widget!['html'], contains('hello'));
+  });
+
   test('drops an empty card and keeps a title-less one', () {
     expect(ConversationUiCard.fromJson({'md': ''}), isNull);
     expect(ConversationUiCard.fromJson({'md': 42}), isNull);

@@ -496,6 +496,9 @@ class IntelligentUiProjector {
       case 'widget':
         sanitized.remove('jsFunctions');
         sanitized.remove('jsExpressions');
+        final html = _asString(sanitized['html']);
+        if (html == null) return null;
+        sanitized['html'] = _sanitizeWidgetHtml(html);
         if (!_validWidget(sanitized)) return null;
       case 'declarative':
         if (!_validTree(sanitized)) return null;
@@ -509,6 +512,9 @@ class IntelligentUiProjector {
           if (_asString(copy['type']) == 'widget') {
             copy.remove('jsFunctions');
             copy.remove('jsExpressions');
+            final html = _asString(copy['html']);
+            if (html == null) return null;
+            copy['html'] = _sanitizeWidgetHtml(html);
           }
           cleanBlocks.add(copy);
         }
@@ -524,6 +530,15 @@ class IntelligentUiProjector {
       if (artifact['policy'] is Map) 'policy': artifact['policy'],
     };
   }
+}
+
+String _sanitizeWidgetHtml(String html) {
+  var out = html.replaceAll(
+    RegExp(r'''\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''', caseSensitive: false),
+    ' ',
+  );
+  out = out.replaceAll(RegExp(r'javascript:', caseSensitive: false), '');
+  return out;
 }
 
 class _UiCall {
