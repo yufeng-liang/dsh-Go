@@ -106,9 +106,14 @@ class IntelligentUiProjector {
 
     for (final event in ordered) {
       switch (event) {
+        case AssistantMessageEvent(:final message, :final turn):
+          for (final call in message.toolCalls) {
+            rootTurns.putIfAbsent(call.id, () => turn);
+            rootSeqs.putIfAbsent(call.id, () => event.seq);
+          }
         case ToolCallEvent():
           rootTurns[event.callId] = event.turn;
-          rootSeqs[event.callId] = event.seq;
+          rootSeqs.putIfAbsent(event.callId, () => event.seq);
           if (!_tools.contains(event.name)) continue;
           final args = _argumentsOf(event.arguments);
           if (args != null) {
@@ -616,9 +621,15 @@ class IntelligentUiProjection {
 
   void _apply(SessionLogEvent event) {
     switch (event) {
+      case AssistantMessageEvent(:final message, :final turn):
+        for (final call in message.toolCalls) {
+          _rootTurns.putIfAbsent(call.id, () => turn);
+          _rootSeqs.putIfAbsent(call.id, () => event.seq);
+        }
+        return;
       case ToolCallEvent():
         _rootTurns[event.callId] = event.turn;
-        _rootSeqs[event.callId] = event.seq;
+        _rootSeqs.putIfAbsent(event.callId, () => event.seq);
         if (!IntelligentUiProjector._tools.contains(event.name)) return;
         final args = IntelligentUiProjector._argumentsOf(event.arguments);
         if (args != null) {
