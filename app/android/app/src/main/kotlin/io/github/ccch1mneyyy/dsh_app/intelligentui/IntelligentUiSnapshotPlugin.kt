@@ -208,14 +208,44 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 val canvas = Canvas(bitmap)
                 canvas.drawColor(Color.TRANSPARENT)
                 web.draw(canvas)
+                val cropped = cropBlankBottom(bitmap)
                 val output = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                cropped.compress(Bitmap.CompressFormat.PNG, 100, output)
+                if (cropped !== bitmap) cropped.recycle()
                 finish(output.toByteArray())
             } catch (error: Throwable) {
                 fail("draw failed: $error")
             } finally {
                 bitmap.recycle()
             }
+        }
+
+        /** Trim trailing rows that are fully transparent or plain white. */
+        private fun cropBlankBottom(source: Bitmap): Bitmap {
+            val width = source.width
+            val height = source.height
+            if (width <= 0 || height <= 0) return source
+            val row = IntArray(width)
+            var bottom = height - 1
+            while (bottom >= 0) {
+                source.getPixels(row, 0, width, 0, bottom, width, 1)
+                var blank = true
+                for (pixel in row) {
+                    val alpha = (pixel ushr 24) and 0xFF
+                    if (alpha <= 8) continue
+                    val red = (pixel ushr 16) and 0xFF
+                    val green = (pixel ushr 8) and 0xFF
+                    val blue = pixel and 0xFF
+                    if (red < 248 || green < 248 || blue < 248) {
+                        blank = false
+                        break
+                    }
+                }
+                if (!blank) break
+                bottom -= 1
+            }
+            if (bottom < 0 || bottom == height - 1) return source
+            return Bitmap.createBitmap(source, 0, 0, width, bottom + 1)
         }
 
         private fun fail(reason: String) {
