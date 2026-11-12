@@ -313,6 +313,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         ...definition.cast<String, Object?>(),
         'css': '${css is String ? css : ''}\n$_widgetFitCss',
         'jsFunctions': '${jsFunctions is String ? jsFunctions : ''}\n$_widgetLinkBridge',
+        // Start small so a short widget does not keep the model's initialHeight.
+        'initialHeight': 48,
       },
     };
   }
