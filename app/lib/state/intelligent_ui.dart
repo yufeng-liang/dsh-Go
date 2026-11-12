@@ -367,6 +367,15 @@ class IntelligentUiProjector {
     for (final id in ids) {
       if (!visit(id, 1)) return false;
     }
+    final reachable = <String>{};
+    void walk(String id) {
+      if (!reachable.add(id)) return;
+      for (final child in _asList(byId[id]!['children'])) {
+        if (child is String) walk(child);
+      }
+    }
+    walk(root);
+    if (reachable.length != ids.length) return false;
     return true;
   }
 
