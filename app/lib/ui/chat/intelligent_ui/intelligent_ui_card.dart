@@ -164,7 +164,13 @@ const _widgetLinkBridge = r'''
 ''';
 
 class IntelligentUiCard extends ConsumerStatefulWidget {
-  const IntelligentUiCard({super.key, required this.artifact, this.onSendPrompt, this.readOnly = false});
+  const IntelligentUiCard({
+    super.key,
+    required this.artifact,
+    this.onSendPrompt,
+    this.readOnly = false,
+    this.immersive = false,
+  });
 
   final IntelligentUiArtifact artifact;
   final Future<bool> Function(String text)? onSendPrompt;
@@ -172,6 +178,10 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
   /// Replay/share cards are read-only: action buttons may render, but any
   /// prompt is rejected instead of reaching a host.
   final bool readOnly;
+
+  /// Chat-stream widget cards are usually already fully styled by the widget
+  /// itself. Skipping the outer [ChatCard] avoids a card-inside-a-card look.
+  final bool immersive;
 
   @override
   ConsumerState<IntelligentUiCard> createState() => _IntelligentUiCardState();
@@ -541,20 +551,22 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
             ),
           );
     final title = widget.artifact.title?.trim();
+    final cardBody = Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: child,
+      ),
+    );
+    if (widget.immersive && widget.artifact.kind == IntelligentUiKind.widget) {
+      return _ImmersiveCard(title: title, child: cardBody);
+    }
     return ChatCard(
       icon: AppIcons.generating,
       title: title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: child,
-          ),
-        ),
-      ],
+      children: [cardBody],
     );
   }
 
@@ -582,6 +594,49 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+}
+
+class _ImmersiveCard extends StatelessWidget {
+  const _ImmersiveCard({this.title, required this.child});
+
+  final String? title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final showTitle = title != null && title!.trim().isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showTitle)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
+            child: Row(
+              children: [
+                Icon(AppIcons.generating, size: 14, color: scheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        child,
+      ],
+    );
   }
 }
 
