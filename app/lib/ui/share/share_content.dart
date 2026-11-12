@@ -604,7 +604,11 @@ class _Metrics {
 
   double intelligentUi(ShareIntelligentUi block) {
     final (_, _, used) = fitMarkdown(block.card.markdown, 320);
-    return 64 + (block.card.title == null ? 0 : 30) + used;
+    final base = 64 + (block.card.title == null ? 0 : 30) + used;
+    // A snapshot card has a real bitmap behind it; reserve room for the
+    // smallest useful card so the layout does not overfill when several
+    // replies are selected.
+    return block.card.widget == null && block.card.artifact == null ? base : math.max(base, 240);
   }
 
   double question(ShareQuestion q) {
