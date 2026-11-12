@@ -24,7 +24,7 @@ import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
 
 const _mobileStyles = '''
-html,body{padding:0!important;margin:0!important;overflow-x:hidden;background:transparent;-webkit-tap-highlight-color:transparent}
+html,body{padding:0!important;margin:0!important;overflow-x:hidden;background:transparent!important;-webkit-tap-highlight-color:transparent}
 #ui{padding:0!important;margin:0!important;overflow-x:hidden!important}
 #ui,#ui *{box-sizing:border-box!important}
 #ui{width:100%!important}
@@ -134,7 +134,10 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
 }
 
 /// Lets a widget's grid/flex children shrink to the card width.
-const _widgetFitCss = '*{box-sizing:border-box!important;min-width:0!important}';
+const _widgetFitCss = '''
+*{box-sizing:border-box!important;min-width:0!important}
+#ui-root{padding:0!important;background:transparent!important}
+''';
 
 /// widget iframe 里的普通 <a href> 会导航 iframe 并被 renderer 移除；捕获点击后
 /// 交给渲染器的 Bridge.openLink，由外层 WebView 打开系统浏览器。
@@ -552,7 +555,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
           );
     final title = widget.artifact.title?.trim();
     final cardBody = Padding(
-      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      padding: EdgeInsets.fromLTRB(0, 0, 0, widget.immersive ? 0 : 8),
       child: AnimatedSize(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
@@ -614,7 +617,7 @@ class _ImmersiveCard extends StatelessWidget {
       children: [
         if (showTitle)
           Padding(
-            padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
             child: Row(
               children: [
                 Icon(AppIcons.generating, size: 14, color: scheme.primary),
