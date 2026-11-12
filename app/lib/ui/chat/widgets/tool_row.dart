@@ -124,7 +124,7 @@ class _ToolRowState extends State<ToolRow> {
       if (widget.uiArtifact case final artifact?) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: IntelligentUiCard(artifact: artifact, onSendPrompt: widget.onSendPrompt),
+          child: IntelligentUiCard(artifact: artifact, onSendPrompt: widget.onSendPrompt, immersive: true),
         );
       }
       if (v.media case final media?) {
@@ -157,9 +157,10 @@ class _ToolRowState extends State<ToolRow> {
           expanded: expanded,
           opens: child != null,
           // 卡片正摊开在下面(标题就在卡片上):行里照旧写参数摘要。
-          titled: !(expanded &&
-              widget.card == ToolCardPlacement.inline &&
-              (v.pluginView is DshUiParsed || widget.uiArtifact != null)),
+          titled:
+              !(expanded &&
+                  widget.card == ToolCardPlacement.inline &&
+                  (v.pluginView is DshUiParsed || widget.uiArtifact != null)),
           onTap: () {
             if (child != null && opener!(child)) return;
             setState(() => _toggled = !expanded);
@@ -172,10 +173,7 @@ class _ToolRowState extends State<ToolRow> {
             child: widget.uiArtifact != null && widget.card == ToolCardPlacement.inline
                 // intelligent-ui 卡片：流式运行中先直接展示，结束后由折叠
                 // 逻辑把工具行收进过程、卡片留在外面。
-                ? IntelligentUiCard(
-                    artifact: widget.uiArtifact!,
-                    onSendPrompt: widget.onSendPrompt,
-                  )
+                ? IntelligentUiCard(artifact: widget.uiArtifact!, onSendPrompt: widget.onSendPrompt, immersive: true)
                 : switch (v.pluginView) {
                     // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
                     _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),
