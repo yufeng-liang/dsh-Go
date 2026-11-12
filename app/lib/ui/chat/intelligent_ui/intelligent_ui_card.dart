@@ -20,7 +20,6 @@ import '../../../state/intelligent_ui.dart';
 import '../../../state/sessions_state.dart' show currentSessionProvider;
 import '../../common/app_dialog.dart';
 import '../../theme/app_icons.dart';
-import '../../theme/shapes.dart';
 import '../../web/web_view_guard.dart';
 import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
@@ -137,8 +136,9 @@ String buildIntelligentUiHtml({required String rendererCode, required String tok
 
 /// Lets a widget's grid/flex children shrink to the card width.
 const _widgetFitCss = '''
+html,body{background:transparent!important;margin:0!important;padding:0!important;border-radius:0!important}
 *{box-sizing:border-box!important;min-width:0!important}
-#ui-root{padding:0!important;background:transparent!important}
+#ui-root{padding:0!important;background:transparent!important;border-radius:0!important}
 ''';
 
 /// widget iframe 里的普通 <a href> 会导航 iframe 并被 renderer 移除；捕获点击后
@@ -644,7 +644,7 @@ class _ImmersiveCard extends StatelessWidget {
               ],
             ),
           ),
-        ClipRRect(borderRadius: AppShape.radiusLg, child: child),
+        child,
       ],
     );
   }
