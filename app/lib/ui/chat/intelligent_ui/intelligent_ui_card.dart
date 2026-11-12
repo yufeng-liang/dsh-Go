@@ -339,7 +339,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _guard = guard;
       _controller = controller;
       if (mounted) setState(() {});
-      await controller.loadHtmlString(buildIntelligentUiHtml(rendererCode: code, token: _token));
+      await controller.loadHtmlString(
+        buildIntelligentUiHtml(rendererCode: code, token: _token),
+        baseUrl: 'https://dsh.local/',
+      );
     } catch (error) {
       _rendererCode = null;
       if (generation == _loadGeneration) _setError('$error');
