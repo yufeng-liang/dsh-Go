@@ -20,13 +20,14 @@ import '../../../state/intelligent_ui.dart';
 import '../../../state/sessions_state.dart' show currentSessionProvider;
 import '../../common/app_dialog.dart';
 import '../../theme/app_icons.dart';
+import '../../theme/shapes.dart';
 import '../../web/web_view_guard.dart';
 import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
 
 const _mobileStyles = '''
-html,body{padding:0!important;margin:0!important;overflow-x:hidden;background:transparent!important;-webkit-tap-highlight-color:transparent}
-#ui{padding:0!important;margin:0!important;overflow-x:hidden!important}
+html,body{padding:0!important;margin:0!important;height:auto!important;min-height:0!important;overflow-x:hidden;background:transparent!important;-webkit-tap-highlight-color:transparent}
+#ui{padding:0!important;margin:0!important;height:auto!important;min-height:0!important;overflow-x:hidden!important}
 #ui,#ui *{box-sizing:border-box!important}
 #ui{width:100%!important}
 #ui *{max-width:100%!important;min-width:0!important;overflow-wrap:anywhere}
@@ -643,7 +644,7 @@ class _ImmersiveCard extends StatelessWidget {
               ],
             ),
           ),
-        child,
+        ClipRRect(borderRadius: AppShape.radiusLg, child: child),
       ],
     );
   }
