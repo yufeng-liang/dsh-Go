@@ -52,8 +52,19 @@ html,body{padding:0!important;margin:0!important;overflow-x:hidden;background:tr
 
 /// 生成智能 UI 卡片的 bootstrap HTML。renderer 代码来自本地打包资源，
 /// 不经过网络；CSP 与 remote 的实现保持一致。
-String buildIntelligentUiHtml({required String rendererCode, required String token}) {
+String? _rendererCacheInput;
+String? _rendererCacheOutput;
+
+String _escapedRendererCode(String rendererCode) {
+  if (_rendererCacheInput == rendererCode) return _rendererCacheOutput!;
   final code = rendererCode.replaceAll(RegExp(r'</script', caseSensitive: false), '<\\/script');
+  _rendererCacheInput = rendererCode;
+  _rendererCacheOutput = code;
+  return code;
+}
+
+String buildIntelligentUiHtml({required String rendererCode, required String token}) {
+  final code = _escapedRendererCode(rendererCode);
   final tokenJson = jsonEncode(token);
   return '''
 <!doctype html>
