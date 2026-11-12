@@ -176,7 +176,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   bool _ready = false;
   bool _gone = false;
   bool _dark = false;
-  int _height = 180;
+  // The renderer reports scrollHeight, which cannot shrink below the current
+  // viewport. Start near a single text line so short cards do not keep a
+  // permanent blank tail; taller content grows on the next resize report.
+  int _height = 96;
   int _textZoom = 100;
   String? _error;
 
