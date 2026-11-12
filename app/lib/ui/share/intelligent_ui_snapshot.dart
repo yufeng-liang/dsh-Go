@@ -105,6 +105,7 @@ class IntelligentUiSnapshot {
         // The widget lives in its own document, so outer share-card CSS cannot
         // reach it. Allow its grid/flex children to shrink to the card width.
         definition = <String, Object?>{...definition, 'css': '${definition['css'] ?? ''}\n$_widgetFitCss'};
+        definition = <String, Object?>{...definition, 'initialHeight': 48};
       }
       final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
       final artifact = IntelligentUiArtifact(
