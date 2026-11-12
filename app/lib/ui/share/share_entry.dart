@@ -14,9 +14,11 @@ import '../../share_code/plugin_share.dart' show marketPluginShareWebLink;
 import '../../state/artifact_files.dart';
 import '../../state/artifacts.dart';
 import '../../state/chat_state.dart';
+import '../../state/intelligent_ui.dart';
 import '../../state/plugins_state.dart' show MarketEntry;
 import '../../state/sessions_state.dart';
 import '../chat/render/code_block.dart' show languageForPath;
+import '../replay/replay_frame.dart';
 import '../replay/replay_scope.dart';
 import '../session/workspace_files.dart' show formatBytes;
 import 'share_content.dart';
@@ -34,6 +36,7 @@ Future<void> shareReply(BuildContext context, AssistantChatItem reply) async {
       commands: end.commands,
       title: replay.share.title,
       loading: false,
+      intelligentUis: _replayIntelligentUis(end, replay.share.title),
     );
     final done = end.items.whereType<AssistantChatItem>().where((r) => r.id == reply.id).firstOrNull ?? reply;
     final source = ReplaySource(
@@ -47,6 +50,41 @@ Future<void> shareReply(BuildContext context, AssistantChatItem reply) async {
   final sessionId = ProviderScope.containerOf(context, listen: false).read(currentSessionProvider);
   if (sessionId == null) return;
   return showSharePanel(context, ConversationSubject(sessionId: sessionId, reply: reply));
+}
+
+List<IntelligentUiArtifact> _replayIntelligentUis(ReplayFrame frame, String title) {
+  final out = <IntelligentUiArtifact>[];
+  for (final entry in frame.uiBySeq.entries) {
+    var index = 0;
+    for (final card in entry.value) {
+      final artifact = card.artifact;
+      final kindName = artifact?['kind'];
+      final kind = switch (kindName) {
+        'declarative' => IntelligentUiKind.declarative,
+        'composition' => IntelligentUiKind.composition,
+        _ => card.widget != null ? IntelligentUiKind.widget : null,
+      };
+      if (kind == null) continue;
+      final definition = switch (kind) {
+        IntelligentUiKind.widget => card.widget,
+        _ => artifact?['definition'] is Map ? Map<String, Object?>.from(artifact!['definition'] as Map) : null,
+      };
+      if (definition == null) continue;
+      out.add(IntelligentUiArtifact(
+        kind: kind,
+        hostId: 'replay',
+        sessionId: title,
+        uiId: 'replay-${entry.key}-${index++}',
+        version: 1,
+        definition: definition,
+        seq: entry.key,
+        originSeq: entry.key,
+        title: card.title,
+        policy: const {'maxHeight': 4000},
+      ));
+    }
+  }
+  return out;
 }
 
 /// 「分享」 on a conversation (the drawer): the panel at 「整段对话」. Works for

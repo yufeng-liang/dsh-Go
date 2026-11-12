@@ -9,6 +9,7 @@ import 'package:dsh_client/dsh_client.dart';
 
 import '../l10n/l10n.dart';
 import '../state/chat_state.dart' show CommandNotice;
+import '../state/intelligent_ui.dart';
 import '../ui/chat/dsh_ui/dsh_ui_model.dart' show dshUiPlainText;
 import '../ui/chat/tool_view.dart';
 import 'conversation_redact.dart';
@@ -26,10 +27,12 @@ const exportUiMarkdownChars = 20 * 1000;
 
 Map<String, Object?>? _shareableArtifact(Map<String, Object?>? artifact) {
   if (artifact == null) return null;
-  final encoded = jsonEncode(artifact);
+  final clean = IntelligentUiProjector.sanitizeExternalArtifact(artifact);
+  if (clean == null) return null;
+  final encoded = jsonEncode(clean);
   // If redaction would rewrite any text, fall back to the redacted Markdown.
   if (redactText(encoded) != encoded) return null;
-  return artifact;
+  return clean;
 }
 
 /// What a conversation export reads: the chat as loaded.
@@ -62,8 +65,10 @@ class ConversationSource {
 
 Map<String, Object?>? _shareableWidget(Map<String, Object?>? widget) {
   final html = widget?['html'];
+  final css = widget?['css'];
   if (html is! String || redactText(html) != html) return null;
-  return widget;
+  if (css != null && (css is! String || redactText(css) != css)) return null;
+  return {'html': html, if (css is String && css.isNotEmpty) 'css': css};
 }
 
 /// One round: a prompt and what followed it, up to the next prompt.

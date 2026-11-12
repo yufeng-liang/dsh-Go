@@ -551,6 +551,7 @@ class SharePanelModel extends ChangeNotifier {
         turns: end.turns,
         commands: end.commands,
         model: replay.share.model,
+        uiCards: _uiCards(end.items, end.turns, end.intelligentUis),
       );
     }
     await _loadHistory();

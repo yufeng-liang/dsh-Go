@@ -170,9 +170,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   static Future<String>? _rendererCode;
 
   final _actions = UiActionGuard();
-  late final String _token;
+  late String _token;
   WebViewController? _controller;
   WebViewGuard? _guard;
+  int _loadGeneration = 0;
   bool _ready = false;
   bool _gone = false;
   bool _dark = false;
@@ -181,6 +182,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   // permanent blank tail; taller content grows on the next resize report.
   int _height = 96;
   int _textZoom = 100;
+  String _locale = 'zh-CN';
   String? _error;
 
   int get _maxHeight {
@@ -194,6 +196,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     super.initState();
     _token = _newToken();
     _dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+    _locale = _localeOf(context);
     _load();
   }
 
@@ -204,6 +207,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     if (textZoom != _textZoom) {
       _textZoom = textZoom;
       unawaited(_guard?.setTextZoom(_textZoom) ?? Future<void>.value());
+    }
+    final locale = _localeOf(context);
+    if (locale != _locale) {
+      _locale = locale;
+      _setLocale();
     }
     final dark = Theme.of(context).brightness == Brightness.dark;
     if (dark != _dark) {
@@ -224,14 +232,24 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   @override
   void dispose() {
-    _guard?.dispose();
+    _loadGeneration++;
+    final guard = _guard;
+    _guard = null;
+    _controller = null;
+    if (guard != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        guard.destroy();
+        guard.dispose();
+      });
+    }
     super.dispose();
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     try {
       final code = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final controller = WebViewController();
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setBackgroundColor(Colors.transparent);
@@ -246,7 +264,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
           },
           onPageStarted: (_) {
             _ready = false;
-            _actions.invalidate();
+            _actions.reset();
           },
           onPageFinished: (_) {
             if (!_ready && !_gone) _postArtifact();
@@ -263,23 +281,43 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         await android.setAllowContentAccess(false);
         await android.setMixedContentMode(MixedContentMode.neverAllow);
       }
-      _guard = WebViewGuard(
+      final guard = WebViewGuard(
         onGone: (crashed) {
-          if (!mounted) return;
+          if (!mounted || generation != _loadGeneration) return;
+          final oldGuard = _guard;
+          _guard = null;
+          _controller = null;
+          if (oldGuard != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              oldGuard.destroy();
+              oldGuard.dispose();
+            });
+          }
           setState(() {
             _gone = true;
             _error = null;
           });
         },
       );
-      await _guard!.attach(controller, dark: _dark, textZoom: _textZoom);
+      await guard.attach(controller, dark: _dark, textZoom: _textZoom);
+      if (!mounted || generation != _loadGeneration) {
+        await guard.destroy();
+        guard.dispose();
+        return;
+      }
+      _guard = guard;
       _controller = controller;
       if (mounted) setState(() {});
       await controller.loadHtmlString(buildIntelligentUiHtml(rendererCode: code, token: _token));
     } catch (error) {
       _rendererCode = null;
-      _setError('$error');
+      if (generation == _loadGeneration) _setError('$error');
     }
+  }
+
+  String _localeOf(BuildContext context) {
+    final language = Localizations.localeOf(context).languageCode;
+    return language == 'zh' ? 'zh-CN' : language;
   }
 
   void _setError(String message) {
@@ -331,15 +369,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   }
 
   void _setLocale() {
-    final language = Localizations.localeOf(context).languageCode;
-    final locale = language == 'zh' ? 'zh-CN' : language;
     unawaited(
-      _controller?.runJavaScript('window.__diuiSetLocale && window.__diuiSetLocale(${jsonEncode(locale)}); true;'),
+      _controller?.runJavaScript('window.__diuiSetLocale && window.__diuiSetLocale(${jsonEncode(_locale)}); true;'),
     );
   }
 
   Future<void> _onMessage(JavaScriptMessage message) async {
-    if (!mounted) return;
+    if (!mounted || _gone) return;
     final parsed = parseIntelligentUiBridgeMessage(message.message, _token);
     if (parsed == null) return;
     switch (parsed.type) {
@@ -358,6 +394,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         _setError(parsed.data['message'] is String ? parsed.data['message'] as String : 'renderer error');
         break;
       case 'download':
+        if (widget.readOnly) return;
         final text = parsed.text;
         if (text == null) return;
         await SharePlus.instance.share(ShareParams(text: text, subject: parsed.name ?? widget.artifact.title ?? ''));
@@ -380,7 +417,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       final List<Object?> value => value.whereType<String>().toList(growable: false),
       _ => const <String>[],
     };
-    if (allowed.isNotEmpty && !allowed.any((origin) => origin == uri.origin)) return;
+    if (allowed.isEmpty || !allowed.any((origin) => origin == uri.origin)) return;
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
@@ -400,7 +437,14 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _reply(id, false, 'unavailable');
       return;
     }
-    final approved = await _confirm(text);
+    bool approved;
+    try {
+      approved = await _confirm(text);
+    } catch (_) {
+      _actions.invalidate();
+      _reply(id, false, 'cancelled');
+      return;
+    }
     if (!mounted) return;
     if (!_actions.isCurrent(id) || !_scopeActive()) {
       _actions.invalidate();
@@ -475,7 +519,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
             action: TextButton(onPressed: _reload, child: Text(l10n.commonRetry)),
           )
         : _controller == null
-        ? const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))
+        ? const SizedBox(height: 96, child: Center(child: CircularProgressIndicator()))
         : SizedBox(
             height: _height.toDouble(),
             // 只让长按进入 WebView，用于选中文字并弹出系统选择工具条；
@@ -504,17 +548,22 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   }
 
   void _reload() {
+    _loadGeneration++;
     final old = _guard;
     _guard = null;
-    if (old != null) {
-      unawaited(old.destroy());
-      old.dispose();
-    }
     _controller = null;
+    if (old != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        old.destroy();
+        old.dispose();
+      });
+    }
     _gone = false;
     _error = null;
     _ready = false;
-    _actions.invalidate();
+    _height = 96;
+    _token = _newToken();
+    _actions.reset();
     _load();
   }
 

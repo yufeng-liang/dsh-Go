@@ -908,6 +908,7 @@ ShareContent shareContentForItems(
   final traces = [for (final r in replies) turnOf(state.turns, r.seq)];
   final models = {for (final r in replies) r.model}..remove(null);
   final blocks = <ShareBlock>[];
+  final seenUiTurns = <int>{};
   for (final item in picked) {
     switch (item) {
       case UserChatItem prompt:
@@ -916,6 +917,7 @@ ShareContent shareContentForItems(
         final answer = shareMarkdown(text, images: images);
         if (answer.trim().isNotEmpty) blocks.add(ShareAnswer(answer));
         if (turnOf(state.turns, item.seq) case final trace?) {
+          if (!seenUiTurns.add(trace.startSeq)) continue;
           for (final card in shareIntelligentUiCards(
             state.intelligentUis,
             startSeq: trace.startSeq,

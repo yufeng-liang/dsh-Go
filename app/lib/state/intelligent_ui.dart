@@ -88,7 +88,8 @@ class IntelligentUiProjector {
     'ui_patch',
   };
   static const _maxArgumentChars = 480000;
-  static const _maxComponents = 2000;
+  static const _maxComponents = 300;
+  static const _maxTreeDepth = 24;
   static const _maxCompositionBlocks = 24;
   static const _maxMarkdownChars = 60000;
   static const _maxCompositionChars = 200000;
@@ -116,6 +117,8 @@ class IntelligentUiProjector {
             calls[event.callId] = _UiCall(event.name, args, event.turn, event.seq);
           }
         case ToolResultEvent():
+          final surfaceOp = event.surfaceOp;
+          if (surfaceOp != null && surfaceOp != 'append') continue;
           final data = event.data;
           final id = _asString(event.message.source.raw['callId']) ??
               _asString(data['callId']);
@@ -124,15 +127,13 @@ class IntelligentUiProjector {
           if (call == null) continue;
           final meta = _asMap(data['meta']);
           if (meta == null || meta['ok'] != true) continue;
-          if (event.message.isError || data['error'] != null) continue;
+          if (event.message.isError || data['isError'] == true || data['error'] != null) continue;
           settled.add(_SettledCall(id, call, meta, event.seq));
         case UnknownEvent() when event.type == 'tool/ptc-dispatch':
           final data = event.data;
           final name = _asString(data['name']);
           final subCallId = _asString(data['subCallId']);
           if (name == null || subCallId == null || !_tools.contains(name)) continue;
-          final surfaceOp = _asString(data['surfaceOp']);
-          if (surfaceOp != null && surfaceOp != 'append') continue;
           if (data['isError'] == true || data['error'] != null) continue;
           final meta = _asMap(data['meta']);
           if (meta == null || meta['ok'] != true) continue;
@@ -141,6 +142,8 @@ class IntelligentUiProjector {
           final rootId = _asString(data['rootCallId']) ?? _asString(data['parentCallId']);
           final turn = data['turn'] ?? (rootId == null ? null : rootTurns[rootId]);
           final originSeq = rootId == null ? event.seq : (rootSeqs[rootId] ?? event.seq);
+          if (turn != null) rootTurns[subCallId] = turn;
+          rootSeqs[subCallId] = originSeq;
           settled.add(_SettledCall(subCallId, _UiCall(name, args, turn, originSeq), meta, event.seq));
         default:
           break;
@@ -257,15 +260,18 @@ class IntelligentUiProjector {
       final index = blocks.indexWhere((block) => _asString(block?['id']) == blockId);
       if (index < 0) return;
       final block = Map<String, Object?>.from(blocks[index]!);
-      for (final key in const ['title', 'root', 'components', 'computed', 'scope', 'computedIds', 'staleFields']) {
-        if (snapshot.containsKey(key)) block[key] = snapshot[key];
+      for (final key in const ['root', 'components']) {
+        if (snapshot[key] is List || snapshot[key] is Map || snapshot[key] is String) block[key] = snapshot[key];
       }
+      if (snapshot['title'] is String) block['title'] = snapshot['title'];
+      if (snapshot['computed'] is List) block['computed'] = snapshot['computed'];
       final nextBlocks = blocks.map((e) => Map<String, Object?>.from(e!)).toList(growable: false);
       nextBlocks[index] = block;
       final definition = Map<String, Object?>.from(prior.definition)..['blocks'] = nextBlocks;
       latest[ownerId] = prior.copyWith(
         version: prior.version + 1,
         definition: definition,
+        policy: _asMap(meta['policy']) ?? prior.policy,
         seq: seq,
         updatedTurn: turn,
       );
@@ -315,24 +321,51 @@ class IntelligentUiProjector {
     if (root == null || root.isEmpty || components.isEmpty || components.length > _maxComponents) {
       return false;
     }
+    if (tree['title'] != null && tree['title'] is! String) return false;
     final ids = <String>{};
     final maps = <Map<String, Object?>>[];
+    final byId = <String, Map<String, Object?>>{};
     for (final component in components) {
       final map = _asMap(component);
       if (map == null) return false;
       final id = _asString(map['id']);
       final type = _asString(map['type']);
       if (id == null || id.isEmpty || type == null || type.isEmpty || !ids.add(id)) return false;
+      if (map['props'] != null && map['props'] is! Map) return false;
       maps.add(map);
+      byId[id] = map;
     }
     if (!ids.contains(root)) return false;
+    final parent = <String, String>{};
     for (final map in maps) {
+      final id = _asString(map['id'])!;
       final children = map['children'];
       if (children == null) continue;
       if (children is! List) return false;
       for (final child in children) {
-        if (child is! String || child.isEmpty || !ids.contains(child)) return false;
+        if (child is! String || child.isEmpty || !ids.contains(child) || child == root) return false;
+        if (parent.containsKey(child)) return false;
+        parent[child] = id;
       }
+    }
+    final visiting = <String>{};
+    final done = <String>{};
+    bool visit(String id, int depth) {
+      if (depth > _maxTreeDepth) return false;
+      if (visiting.contains(id)) return false;
+      if (done.contains(id)) return true;
+      visiting.add(id);
+      final children = _asList(byId[id]!['children']);
+      for (final child in children) {
+        if (child is String && !visit(child, depth + 1)) return false;
+      }
+      visiting.remove(id);
+      done.add(id);
+      return true;
+    }
+
+    for (final id in ids) {
+      if (!visit(id, 1)) return false;
     }
     return true;
   }
@@ -340,19 +373,47 @@ class IntelligentUiProjector {
   static bool _validComposition(Map<String, Object?> args) {
     final blocks = _asList(args['blocks']);
     if (blocks.isEmpty || blocks.length > _maxCompositionBlocks) return false;
+    for (final key in args.keys) {
+      if (key != 'title' && key != 'blocks') return false;
+    }
+    final title = args['title'];
+    if (title != null && (title is! String || title.length > 200)) return false;
     final ids = <String>{};
+    final computedIds = <String>{};
     for (final block in blocks) {
       final map = _asMap(block);
       if (map == null) return false;
       final id = _asString(map['id']);
       final type = _asString(map['type']);
       if (id == null || !_blockId.hasMatch(id) || !ids.add(id)) return false;
+      final allowed = switch (type) {
+        'markdown' => const {'id', 'type', 'text'},
+        'catalog' => const {'id', 'type', 'title', 'root', 'components', 'computed'},
+        'widget' => const {
+          'id',
+          'type',
+          'title',
+          'initialHeight',
+          'placeholderMessages',
+          'css',
+          'html',
+          'jsFunctions',
+          'jsExpressions',
+        },
+        _ => null,
+      };
+      if (allowed == null || map.keys.any((key) => !allowed.contains(key))) return false;
       switch (type) {
         case 'markdown':
           final text = _asString(map['text']);
-          if (text == null || text.isEmpty || text.length > _maxMarkdownChars) return false;
+          if (text == null || text.trim().isEmpty || text.length > _maxMarkdownChars) return false;
         case 'catalog':
           if (!_validTree(map)) return false;
+          for (final computed in _asList(map['computed'])) {
+            final item = _asMap(computed);
+            final id = _asString(item?['id']);
+            if (id == null || id.isEmpty || !computedIds.add(id)) return false;
+          }
         case 'widget':
           if (!_validWidget(map)) return false;
         default:
@@ -366,21 +427,35 @@ class IntelligentUiProjector {
     }
   }
 
-  /// widget 块的准入条件与 iui `validateWidget` 对齐：html 非空且不含
-  /// `<script>`，四段代码总长不超过便携渲染器的 480000 字节上限。
+  /// widget 块的准入条件与 iui `validateWidget` 对齐。
   static bool _validWidget(Map<String, Object?> args) {
     final html = _asString(args['html']);
     if (html == null || html.trim().isEmpty || RegExp(r'<script[\s>]', caseSensitive: false).hasMatch(html)) {
       return false;
     }
-    var total = html.length;
-    final css = _asString(args['css']);
-    if (css != null) total += css.length;
-    for (final key in const ['jsFunctions', 'jsExpressions']) {
-      final values = _asList(args[key]);
-      for (final value in values) {
-        if (value is! String) return false;
-        total += value.length;
+    final title = args['title'];
+    if (title != null && title is! String) return false;
+    final css = args['css'];
+    if (css != null && css is! String) return false;
+    final jsFunctions = args['jsFunctions'];
+    if (jsFunctions != null && jsFunctions is! String) return false;
+    final jsExpressions = args['jsExpressions'];
+    if (jsExpressions != null && (jsExpressions is! List || jsExpressions.any((v) => v is! String))) {
+      return false;
+    }
+    final placeholders = args['placeholderMessages'];
+    if (placeholders != null && (placeholders is! List || placeholders.any((v) => v is! String))) {
+      return false;
+    }
+    final initialHeight = args['initialHeight'];
+    if (initialHeight != null &&
+        (initialHeight is! num || !initialHeight.isFinite || initialHeight <= 0)) {
+      return false;
+    }
+    var total = html.length + (css is String ? css.length : 0) + (jsFunctions is String ? jsFunctions.length : 0);
+    if (jsExpressions is List) {
+      for (final value in jsExpressions) {
+        total += (value as String).length;
       }
     }
     return total <= _maxArgumentChars;
@@ -401,11 +476,54 @@ class IntelligentUiProjector {
 
   static String? _asString(Object? value) => value is String ? value : null;
 
-  static int? _asInt(Object? value) => switch (value) {
-    final int v => v,
-    final num v => v.toInt(),
-    _ => null,
-  };
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is double && value.isFinite && value == value.truncateToDouble()) return value.toInt();
+    return null;
+  }
+
+  /// Validates and sanitizes an artifact that came from an untrusted share
+  /// file. Widget JS is never executed outside the authoring conversation.
+  static Map<String, Object?>? sanitizeExternalArtifact(Object? json) {
+    final artifact = _asMap(json);
+    if (artifact == null) return null;
+    final kind = _asString(artifact['kind']);
+    final definition = _asMap(artifact['definition']);
+    if (kind == null || definition == null) return null;
+    if (jsonEncode(artifact).length > _maxArgumentChars) return null;
+    final sanitized = Map<String, Object?>.from(definition);
+    switch (kind) {
+      case 'widget':
+        sanitized.remove('jsFunctions');
+        sanitized.remove('jsExpressions');
+        if (!_validWidget(sanitized)) return null;
+      case 'declarative':
+        if (!_validTree(sanitized)) return null;
+      case 'composition':
+        final blocks = _asList(sanitized['blocks']).map((e) => _asMap(e)).toList(growable: false);
+        if (blocks.isEmpty || blocks.length > _maxCompositionBlocks) return null;
+        final cleanBlocks = <Map<String, Object?>>[];
+        for (final block in blocks) {
+          if (block == null) return null;
+          final copy = Map<String, Object?>.from(block);
+          if (_asString(copy['type']) == 'widget') {
+            copy.remove('jsFunctions');
+            copy.remove('jsExpressions');
+          }
+          cleanBlocks.add(copy);
+        }
+        sanitized['blocks'] = cleanBlocks;
+        if (!_validComposition(sanitized)) return null;
+      default:
+        return null;
+    }
+    return {
+      'kind': kind,
+      'definition': sanitized,
+      if (artifact['title'] is String) 'title': artifact['title'],
+      if (artifact['policy'] is Map) 'policy': artifact['policy'],
+    };
+  }
 }
 
 class _UiCall {
