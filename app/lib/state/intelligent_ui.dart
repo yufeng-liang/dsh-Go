@@ -81,12 +81,7 @@ class IntelligentUiArtifact {
 class IntelligentUiProjector {
   const IntelligentUiProjector._();
 
-  static const _tools = {
-    'ui_render',
-    'ui_render_widget',
-    'ui_compose',
-    'ui_patch',
-  };
+  static const _tools = {'ui_render', 'ui_render_widget', 'ui_compose', 'ui_patch'};
   static const _maxArgumentChars = 480000;
   static const _maxComponents = 300;
   static const _maxTreeDepth = 24;
@@ -120,8 +115,7 @@ class IntelligentUiProjector {
           final surfaceOp = event.surfaceOp;
           if (surfaceOp != null && surfaceOp != 'append') continue;
           final data = event.data;
-          final id = _asString(event.message.source.raw['callId']) ??
-              _asString(data['callId']);
+          final id = _asString(event.message.source.raw['callId']) ?? _asString(data['callId']);
           if (id == null || id.isEmpty) continue;
           final call = calls[id];
           if (call == null) continue;
@@ -222,8 +216,7 @@ class IntelligentUiProjector {
       }
     }
 
-    final result = latest.values.toList(growable: false)
-      ..sort((a, b) => a.seq.compareTo(b.seq));
+    final result = latest.values.toList(growable: false)..sort((a, b) => a.seq.compareTo(b.seq));
     return result;
   }
 
@@ -244,9 +237,7 @@ class IntelligentUiProjector {
     final ownerId = hash < 0 ? targetId : targetId.substring(0, hash);
     final prior = latest[ownerId];
     if (prior == null) return;
-    final expected = prior.kind == IntelligentUiKind.composition
-        ? blockVersions[targetId]
-        : prior.version;
+    final expected = prior.kind == IntelligentUiKind.composition ? blockVersions[targetId] : prior.version;
     if (expected == null || expected != baseVersion) return;
     final snapshot = _asMap(meta['ui']);
     if (snapshot == null) return;
@@ -374,6 +365,7 @@ class IntelligentUiProjector {
         if (child is String) walk(child);
       }
     }
+
     walk(root);
     if (reachable.length != ids.length) return false;
     return true;
@@ -457,8 +449,7 @@ class IntelligentUiProjector {
       return false;
     }
     final initialHeight = args['initialHeight'];
-    if (initialHeight != null &&
-        (initialHeight is! num || !initialHeight.isFinite || initialHeight <= 0)) {
+    if (initialHeight != null && (initialHeight is! num || !initialHeight.isFinite || initialHeight <= 0)) {
       return false;
     }
     var total = html.length + (css is String ? css.length : 0) + (jsFunctions is String ? jsFunctions.length : 0);
@@ -542,10 +533,7 @@ class IntelligentUiProjector {
 }
 
 String _sanitizeWidgetHtml(String html) {
-  var out = html.replaceAll(
-    RegExp(r'''\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''', caseSensitive: false),
-    ' ',
-  );
+  var out = html.replaceAll(RegExp(r'''\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''', caseSensitive: false), ' ');
   out = out.replaceAll(RegExp(r'javascript:', caseSensitive: false), '');
   return out;
 }
@@ -566,4 +554,188 @@ class _SettledCall {
   final _UiCall call;
   final Map<String, Object?> meta;
   final int seq;
+}
+
+/// Incremental projector used by the live chat controller. It keeps the same
+/// state as [IntelligentUiProjector.project] but only consumes newly arrived
+/// events; a snapshot/history rewrite calls [applyAll] once.
+class IntelligentUiProjection {
+  IntelligentUiProjection({required this.hostId, required this.sessionId});
+
+  final String hostId;
+  final String sessionId;
+  final Map<String, Object?> _rootTurns = {};
+  final Map<String, int> _rootSeqs = {};
+  final Map<String, _UiCall> _calls = {};
+  final List<_SettledCall> _settled = [];
+  final Map<String, IntelligentUiArtifact> _latest = {};
+  final Map<String, int> _blockVersions = {};
+  int _settledApplied = 0;
+  List<IntelligentUiArtifact>? _artifacts;
+  bool _dirty = true;
+
+  List<IntelligentUiArtifact> get artifacts {
+    if (_dirty) {
+      final values = _latest.values.toList(growable: false)..sort((a, b) => a.seq.compareTo(b.seq));
+      _artifacts = List.unmodifiable(values);
+      _dirty = false;
+    }
+    return _artifacts ?? const [];
+  }
+
+  void reset() {
+    _rootTurns.clear();
+    _rootSeqs.clear();
+    _calls.clear();
+    _settled.clear();
+    _latest.clear();
+    _blockVersions.clear();
+    _settledApplied = 0;
+    _artifacts = null;
+    _dirty = true;
+  }
+
+  void applyAll(Iterable<SessionLogEvent> events) {
+    reset();
+    final ordered = events.toList(growable: false)..sort((a, b) => a.seq.compareTo(b.seq));
+    for (final event in ordered) {
+      _apply(event);
+    }
+  }
+
+  /// Applies events appended after the last projection without replaying the
+  /// already-projected prefix.
+  void applyPending(Iterable<SessionLogEvent> events) {
+    for (final event in events) {
+      _apply(event);
+    }
+  }
+
+  void _apply(SessionLogEvent event) {
+    switch (event) {
+      case ToolCallEvent():
+        _rootTurns[event.callId] = event.turn;
+        _rootSeqs[event.callId] = event.seq;
+        if (!IntelligentUiProjector._tools.contains(event.name)) return;
+        final args = IntelligentUiProjector._argumentsOf(event.arguments);
+        if (args != null) {
+          _calls[event.callId] = _UiCall(event.name, args, event.turn, event.seq);
+        }
+        return;
+      case ToolResultEvent():
+        final surfaceOp = event.surfaceOp;
+        if (surfaceOp != null && surfaceOp != 'append') return;
+        final data = event.data;
+        final id =
+            IntelligentUiProjector._asString(event.message.source.raw['callId']) ??
+            IntelligentUiProjector._asString(data['callId']);
+        if (id == null || id.isEmpty) return;
+        final call = _calls[id];
+        if (call == null) return;
+        final meta = IntelligentUiProjector._asMap(data['meta']);
+        if (meta == null || meta['ok'] != true) return;
+        if (event.message.isError || data['isError'] == true || data['error'] != null) return;
+        _settled.add(_SettledCall(id, call, meta, event.seq));
+      case UnknownEvent() when event.type == 'tool/ptc-dispatch':
+        final data = event.data;
+        final name = IntelligentUiProjector._asString(data['name']);
+        final subCallId = IntelligentUiProjector._asString(data['subCallId']);
+        if (name == null || subCallId == null || !IntelligentUiProjector._tools.contains(name)) return;
+        if (data['isError'] == true || data['error'] != null) return;
+        final meta = IntelligentUiProjector._asMap(data['meta']);
+        if (meta == null || meta['ok'] != true) return;
+        final args = IntelligentUiProjector._argumentsOf(data['arguments']);
+        if (args == null) return;
+        final rootId =
+            IntelligentUiProjector._asString(data['rootCallId']) ??
+            IntelligentUiProjector._asString(data['parentCallId']);
+        final turn = data['turn'] ?? (rootId == null ? null : _rootTurns[rootId]);
+        final originSeq = rootId == null ? event.seq : (_rootSeqs[rootId] ?? event.seq);
+        if (turn != null) _rootTurns[subCallId] = turn;
+        _rootSeqs[subCallId] = originSeq;
+        _settled.add(_SettledCall(subCallId, _UiCall(name, args, turn, originSeq), meta, event.seq));
+      default:
+        return;
+    }
+    _settled.sort((a, b) => a.seq.compareTo(b.seq));
+    while (_settledApplied < _settled.length) {
+      _applySettled(_settled[_settledApplied++]);
+    }
+    if (_settledApplied == _settled.length) {
+      _settled.clear();
+      _settledApplied = 0;
+    }
+  }
+
+  void _applySettled(_SettledCall item) {
+    final args = item.call.args;
+    switch (item.call.kind) {
+      case 'ui_render':
+        if (_latest.containsKey(item.id) || !IntelligentUiProjector._validTree(args)) return;
+        _latest[item.id] = IntelligentUiArtifact(
+          kind: IntelligentUiKind.declarative,
+          hostId: hostId,
+          sessionId: sessionId,
+          uiId: item.id,
+          version: 1,
+          title: IntelligentUiProjector._asString(args['title']),
+          definition: args,
+          policy: IntelligentUiProjector._policyOf(item.meta),
+          turn: item.call.turn,
+          seq: item.seq,
+          originSeq: item.call.originSeq,
+        );
+        _dirty = true;
+      case 'ui_render_widget':
+        if (_latest.containsKey(item.id) || !IntelligentUiProjector._validWidget(args)) return;
+        _latest[item.id] = IntelligentUiArtifact(
+          kind: IntelligentUiKind.widget,
+          hostId: hostId,
+          sessionId: sessionId,
+          uiId: item.id,
+          version: 1,
+          title: IntelligentUiProjector._asString(args['title']),
+          definition: args,
+          policy: IntelligentUiProjector._policyOf(item.meta),
+          turn: item.call.turn,
+          seq: item.seq,
+          originSeq: item.call.originSeq,
+        );
+        _dirty = true;
+      case 'ui_compose':
+        if (_latest.containsKey(item.id) || !IntelligentUiProjector._validComposition(args)) return;
+        final blocks = IntelligentUiProjector._asList(args['blocks']);
+        _latest[item.id] = IntelligentUiArtifact(
+          kind: IntelligentUiKind.composition,
+          hostId: hostId,
+          sessionId: sessionId,
+          uiId: item.id,
+          version: 1,
+          title: IntelligentUiProjector._asString(args['title']),
+          definition: args,
+          policy: IntelligentUiProjector._policyOf(item.meta),
+          turn: item.call.turn,
+          seq: item.seq,
+          originSeq: item.call.originSeq,
+        );
+        for (final block in blocks) {
+          final map = IntelligentUiProjector._asMap(block);
+          if (map != null && IntelligentUiProjector._asString(map['type']) == 'catalog') {
+            final blockId = IntelligentUiProjector._asString(map['id']);
+            if (blockId != null) _blockVersions['${item.id}#$blockId'] = 1;
+          }
+        }
+        _dirty = true;
+      case 'ui_patch':
+        IntelligentUiProjector._applyPatch(
+          latest: _latest,
+          blockVersions: _blockVersions,
+          args: args,
+          meta: item.meta,
+          seq: item.seq,
+          turn: item.call.turn,
+        );
+        _dirty = true;
+    }
+  }
 }

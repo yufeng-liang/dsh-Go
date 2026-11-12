@@ -68,6 +68,7 @@ class IntelligentUiSnapshot {
   static const _channel = MethodChannel('dsh/intelligent_ui_snapshot');
   static const _maxCache = 8;
   static final _cache = <String, Future<Uint8List?>>{};
+  static Future<void> _queue = Future.value();
   static Future<String>? _rendererCode;
 
   /// The widget's current pixels at [width] logical pixels, or null when the
@@ -80,16 +81,33 @@ class IntelligentUiSnapshot {
   }) {
     final payload = card.artifact ?? card.widget;
     if (payload == null || width <= 0) return Future<Uint8List?>.value();
-    final key = '${payload.hashCode}|${width.toStringAsFixed(1)}|$dark|$locale';
+    final key = '${_cardKey(card)}|${width.toStringAsFixed(1)}|$dark|$locale';
     final cached = _cache[key];
     if (cached != null) return cached;
     if (_cache.length >= _maxCache) _cache.remove(_cache.keys.first);
-    final future = _capture(card: card, width: width, dark: dark, locale: locale);
+    // Serialize captures: each one creates an offscreen WebView, so running
+    // a whole share card's cards concurrently spikes memory on low-end phones.
+    final future = _queue.then((_) => _capture(card: card, width: width, dark: dark, locale: locale));
+    _queue = future.then((_) {}, onError: (_) {});
     _cache[key] = future;
     future.then((value) {
       if (value == null) _cache.remove(key);
     });
     return future;
+  }
+
+  /// Stable identity for the snapshot cache: a rebuilt share card keeps the
+  /// same artifact/uiId/version even when its Dart wrapper object changes.
+  static String _cardKey(ShareIntelligentUiCard card) {
+    final artifact = card.artifact;
+    if (artifact != null) {
+      final kind = artifact['kind'];
+      final uiId = artifact['uiId'];
+      final version = artifact['version'];
+      return 'a:$kind:$uiId:$version:${identityHashCode(artifact['definition'])}';
+    }
+    final widget = card.widget;
+    return 'w:${identityHashCode(widget)}:${card.title.hashCode}';
   }
 
   static Future<Uint8List?> _capture({
@@ -118,7 +136,7 @@ class IntelligentUiSnapshot {
         ),
         hostId: '',
         sessionId: '',
-        uiId: 'share-${payload?.hashCode ?? card.widget.hashCode}',
+        uiId: 'share-${_cardKey(card).hashCode}',
         version: 1,
         definition: Map<String, Object?>.from(definition),
         seq: 0,

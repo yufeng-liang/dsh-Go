@@ -15,7 +15,6 @@ class ChatRowsCache {
   ChatState? _state;
   bool _foldTurns = false;
   List<TurnArtifacts> _artifacts = const [];
-  List<IntelligentUiArtifact> _intelligentUis = const [];
   List<ChatRow> _rows = const [];
   Map<String, int> _index = const {};
 
@@ -38,7 +37,7 @@ class ChatRowsCache {
     if (previous != null &&
         foldTurns == _foldTurns &&
         listEquals(artifacts, _artifacts) &&
-        listEquals(intelligentUis, _intelligentUis) &&
+        state.intelligentUiRevision == previous.intelligentUiRevision &&
         state.running == previous.running &&
         listEquals(state.approvals, previous.approvals) &&
         listEquals(state.questions, previous.questions) &&
@@ -51,7 +50,6 @@ class ChatRowsCache {
     _state = state;
     _foldTurns = foldTurns;
     _artifacts = artifacts;
-    _intelligentUis = intelligentUis;
     if (reused != null) {
       _rows = reused;
     } else {

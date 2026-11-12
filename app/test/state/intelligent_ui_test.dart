@@ -8,38 +8,40 @@ import 'package:dsh_app/state/intelligent_ui.dart';
 Map<String, Object?> _tree({String root = 'root'}) => {
   'root': root,
   'components': [
-    {'id': root, 'type': 'text', 'props': {'text': 'hello'}},
+    {
+      'id': root,
+      'type': 'text',
+      'props': {'text': 'hello'},
+    },
   ],
 };
 
-ToolCallEvent _call(int seq, String callId, String name, Map<String, Object?> args) =>
-    ToolCallEvent(
-      seq,
-      DateTime(2026, 1, 1),
-      const {},
-      turn: 1,
-      step: 1,
-      callId: callId,
-      name: name,
-      arguments: _json(args),
-    );
+ToolCallEvent _call(int seq, String callId, String name, Map<String, Object?> args) => ToolCallEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  const {},
+  turn: 1,
+  step: 1,
+  callId: callId,
+  name: name,
+  arguments: _json(args),
+);
 
-ToolResultEvent _result(int seq, String callId, {Object? meta, bool isError = false}) =>
-    ToolResultEvent(
-      seq,
-      DateTime(2026, 1, 1),
-      {'meta': meta},
-      turn: 1,
-      step: 1,
-      message: Message(
-        id: 'm$seq',
-        role: MessageRole.tool,
-        parts: const [],
-        source: MessageSource('tool', {'callId': callId}),
-        toolCallId: callId,
-        isError: isError,
-      ),
-    );
+ToolResultEvent _result(int seq, String callId, {Object? meta, bool isError = false}) => ToolResultEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  {'meta': meta},
+  turn: 1,
+  step: 1,
+  message: Message(
+    id: 'm$seq',
+    role: MessageRole.tool,
+    parts: const [],
+    source: MessageSource('tool', {'callId': callId}),
+    toolCallId: callId,
+    isError: isError,
+  ),
+);
 
 String _json(Object? value) => const JsonEncoder().convert(value);
 
@@ -48,15 +50,25 @@ void main() {
     test('projects ui_render and applies a stale-safe patch', () {
       final events = <SessionLogEvent>[
         _call(1, 'call-a', 'ui_render', {'title': 'First', ..._tree()}),
-        _result(2, 'call-a', meta: {'ok': true, 'policy': {'maxHeight': 320}}),
+        _result(
+          2,
+          'call-a',
+          meta: {
+            'ok': true,
+            'policy': {'maxHeight': 320},
+          },
+        ),
         _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 1, 'ops': []}),
-        _result(4, 'call-b', meta: {'ok': true, 'ui': {'uiId': 'call-a', 'version': 2, ..._tree(root: 'next')}}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
       ];
-      final artifacts = IntelligentUiProjector.project(
-        events,
-        hostId: 'host',
-        sessionId: 'session',
-      );
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'host', sessionId: 'session');
       expect(artifacts, hasLength(1));
       expect(artifacts.single.uiId, 'call-a');
       expect(artifacts.single.kind, IntelligentUiKind.declarative);
@@ -71,7 +83,14 @@ void main() {
         _call(1, 'call-a', 'ui_render', _tree()),
         _result(2, 'call-a', meta: {'ok': true}),
         _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 2, 'ops': []}),
-        _result(4, 'call-b', meta: {'ok': true, 'ui': {'uiId': 'call-a', 'version': 3, ..._tree()}}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 3, ..._tree()},
+          },
+        ),
       ];
       final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
       expect(artifacts, hasLength(1));
@@ -105,10 +124,14 @@ void main() {
         _call(1, 'compose-a', 'ui_compose', composition),
         _result(2, 'compose-a', meta: {'ok': true}),
         _call(3, 'patch-a', 'ui_patch', {'uiId': 'compose-a#card', 'baseVersion': 1, 'ops': []}),
-        _result(4, 'patch-a', meta: {
-          'ok': true,
-          'ui': {'uiId': 'compose-a#card', 'version': 2, ..._tree(root: 'next')},
-        }),
+        _result(
+          4,
+          'patch-a',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'compose-a#card', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
       ];
       final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
       expect(artifacts, hasLength(1));
@@ -118,6 +141,30 @@ void main() {
       final updated = (definition['blocks'] as List)[1] as Map;
       expect(updated['root'], 'next');
       expect((definition['blocks'] as List)[0]['text'], 'intro');
+    });
+
+    test('incremental projection matches a full replay', () {
+      final events = <SessionLogEvent>[
+        _call(1, 'call-a', 'ui_render', {'title': 'First', ..._tree()}),
+        _result(2, 'call-a', meta: {'ok': true}),
+        _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 1, 'ops': []}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
+      ];
+      final full = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      final incremental = IntelligentUiProjection(hostId: 'h', sessionId: 's');
+      incremental.applyAll(events.take(2));
+      incremental.applyPending(events.skip(2));
+      expect(
+        incremental.artifacts.map((a) => '${a.uiId}:${a.version}:${a.definition['root']}'),
+        full.map((a) => '${a.uiId}:${a.version}:${a.definition['root']}'),
+      );
     });
 
     test('rejects widget html containing a script tag', () {
