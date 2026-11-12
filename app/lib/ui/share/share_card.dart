@@ -886,6 +886,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
         : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final title = card.title ?? appL10n.chatIntelligentUiTitle;
     return DecoratedBox(
       decoration: ShapeDecoration(
         color: scheme.surfaceContainerLow,
@@ -905,7 +906,7 @@ class ShareIntelligentUiCardView extends StatelessWidget {
                 Icon(AppIcons.generating, size: 16, color: scheme.primary),
                 const SizedBox(width: 6),
                 Text(
-                  appL10n.chatIntelligentUiTitle,
+                  title,
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: scheme.primary,
                     fontWeight: FontWeight.w600,
@@ -914,15 +915,6 @@ class ShareIntelligentUiCardView extends StatelessWidget {
                 ),
               ],
             ),
-            // A widget card carries its own title inside its HTML; the native
-            // title would duplicate it (and the fallback renders it too).
-            if (card.title case final title? when card.widget == null) ...[
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurface),
-              ),
-            ],
             const SizedBox(height: 8),
             body,
           ],
