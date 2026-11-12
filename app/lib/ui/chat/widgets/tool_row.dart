@@ -15,7 +15,6 @@ import '../../plugins/view/plugin_view.dart' show DshUiParsed, PluginToolCard;
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import '../intelligent_ui/intelligent_ui_card.dart';
-import '../render/ansi_text.dart';
 import '../render/code_block.dart';
 import '../render/diff_view.dart';
 import '../render/long_text.dart';
