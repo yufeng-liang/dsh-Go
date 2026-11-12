@@ -174,7 +174,12 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         }
 
         private fun measureAndDraw(pxWidth: Int, density: Float) {
-            web.evaluateJavascript("Math.ceil(document.documentElement.scrollHeight)") { value ->
+            web.evaluateJavascript(
+                "(function(){var b=document.body,u=document.getElementById('ui'),h=0;" +
+                    "if(b){h=Math.max(h,b.scrollHeight,b.getBoundingClientRect().height)}" +
+                    "if(u){h=Math.max(h,u.scrollHeight,u.getBoundingClientRect().height)}" +
+                    "return Math.ceil(h)})()",
+            ) { value ->
                 val cssHeight = value?.trim()?.trim('"')?.toFloatOrNull()
                 if (cssHeight == null || cssHeight <= 0f) return@evaluateJavascript fail("bad scrollHeight: $value")
                 val pxHeight = (ceil(cssHeight.toDouble() * density).toInt()).coerceIn(1, MAX_PX_HEIGHT)
