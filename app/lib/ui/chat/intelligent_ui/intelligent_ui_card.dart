@@ -372,8 +372,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     if (definition is! Map) return json;
     final css = definition['css'];
     final jsFunctions = definition['jsFunctions'];
+    final definitionHash = definition.hashCode;
     return {
       ...json,
+      // The renderer persists widget height under uiId; fold the current
+      // definition into the key so an updated/older card cannot inherit a
+      // stale height (which shows up as a large blank band under the card).
+      'uiId': '${json['uiId']}#h$definitionHash',
       'definition': {
         ...definition.cast<String, Object?>(),
         'css': '${css is String ? css : ''}\n$_widgetFitCss',
