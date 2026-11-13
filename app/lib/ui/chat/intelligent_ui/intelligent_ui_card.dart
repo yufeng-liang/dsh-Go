@@ -23,6 +23,7 @@ import '../../web/web_view_guard.dart';
 import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
 import 'intelligent_ui_native.dart';
+import 'intelligent_ui_webview_pool.dart';
 
 const _mobileStyles = '''
 html,body{padding:0!important;margin:0!important;height:auto!important;min-height:0!important;overflow-x:hidden;background:transparent!important;-webkit-tap-highlight-color:transparent}
@@ -327,8 +328,14 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   @override
   void didUpdateWidget(covariant IntelligentUiCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final changed =
+        oldWidget.artifact.uiId != widget.artifact.uiId || oldWidget.artifact.version != widget.artifact.version;
+    if (changed) {
+      // A reused row must not inherit the previous card's WebView height.
+      _height = 96;
+    }
     if (!_ready) return;
-    if (oldWidget.artifact.uiId != widget.artifact.uiId || oldWidget.artifact.version != widget.artifact.version) {
+    if (changed) {
       _postArtifact();
     }
   }
@@ -351,6 +358,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   Future<void> _load() async {
     if (IntelligentUiNativePreview.supports(widget.artifact)) return;
     final generation = ++_loadGeneration;
+    await IntelligentUiWebViewPool.instance.run(() => _loadInner(generation));
+  }
+
+  Future<void> _loadInner(int generation) async {
+    if (!mounted || generation != _loadGeneration) return;
     const background = Colors.transparent;
     try {
       final controller = WebViewController();
@@ -620,10 +632,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   Widget build(BuildContext context) {
     final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
     if (nativePreview != null) {
-      final body = Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        child: nativePreview,
-      );
+      final body = Padding(padding: const EdgeInsets.fromLTRB(8, 0, 8, 8), child: nativePreview);
       if (widget.immersive) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
