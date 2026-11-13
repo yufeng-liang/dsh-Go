@@ -62,7 +62,8 @@ window.__diuiSetArtifact($data);
 }
 
 /// Lets grid/flex children of a widget shrink to the card width.
-const _widgetFitCss = '*{box-sizing:border-box!important;min-width:0!important}';
+const _widgetFitCss =
+    'html,body,#ui{overflow:hidden!important} *{box-sizing:border-box!important;min-width:0!important}';
 
 class IntelligentUiSnapshot {
   const IntelligentUiSnapshot._();
