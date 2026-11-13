@@ -22,6 +22,26 @@ void main() {
     expect(html, contains("type:'captureReady'"));
   });
 
+  test('snapshot policy controls remote media origins', () {
+    final html = buildIntelligentUiSnapshotHtml(
+      rendererCode: '',
+      artifact: const {
+        'kind': 'widget',
+        'uiId': 'share-media',
+        'version': 1,
+        'definition': {'html': '<img src="https://img.example/a.png">'},
+        'policy': {
+          'allowMedia': true,
+          'mediaOrigins': ['https://img.example'],
+        },
+      },
+      dark: false,
+      locale: 'en',
+    );
+    expect(html, contains('img-src data: blob: https://img.example'));
+    expect(html, contains('media-src https://img.example'));
+  });
+
   test('snapshot bootstrap stays outside a renderer string containing </body>', () {
     final html = buildIntelligentUiSnapshotHtml(
       rendererCode: 'var fake = "</body>"; window.renderer = true;',

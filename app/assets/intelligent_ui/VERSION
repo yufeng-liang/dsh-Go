@@ -2,3 +2,4 @@ deepseek-harness-intelligent-ui 0.2.15
 upstream: https://github.com/dreamfarer-space/deepseek-harness-intelligent-ui
 commit: a009032
 file: renderer/renderer.js
+variant: offline (built with `npm run build:offline`)

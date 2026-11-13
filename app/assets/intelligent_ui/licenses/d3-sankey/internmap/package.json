@@ -1,0 +1,9 @@
+{
+  "name": "internmap",
+  "version": "1.0.1",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mbostock/internmap.git"
+  }
+}

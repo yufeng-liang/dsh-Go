@@ -19,7 +19,9 @@ String buildIntelligentUiSnapshotHtml({
   required bool dark,
   required String locale,
 }) {
-  final base = buildIntelligentUiHtml(rendererCode: rendererCode, token: 'snapshot');
+  final rawPolicy = artifact['policy'];
+  final policy = rawPolicy is Map ? rawPolicy.map((key, value) => MapEntry('$key', value)) : const <String, Object?>{};
+  final base = buildIntelligentUiHtml(rendererCode: rendererCode, token: 'snapshot', policy: policy);
   final data = jsonEncode(artifact).replaceAll('<', r'\u003c');
   final setup =
       '''

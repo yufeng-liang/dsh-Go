@@ -17,7 +17,7 @@
 - The card does not scroll vertically and does not claim horizontal gestures: internal `max-height` and horizontal scrolling are removed from tables, code blocks and diffs. Tables use a fixed width and wrap cell content. This avoids both nested scroll conflicts and conflict with the phone's edge swipe that opens the app drawer.
 - Card content uses 0px horizontal padding to make the most of the phone width; the title row keeps `ChatCard`'s 16.
 - Interactions: local table, form and tab interactions run inside the WebView renderer. Choice/Button/Widget `sendPrompt` actions show a native confirmation, then verify the host, session and connection before sending to the current session. `https://` links in the card open the system browser; downloads use the system share sheet. The read-only replay page never sends prompts.
-- Card height is still capped by `maxHeight`; content beyond the cap is clipped by the renderer. An expand entry point can be added later without changing the gesture policy.
+- Card height is capped by `maxHeight` by default; long tables, charts and maps can be opened full-screen from the title row without changing the chat gesture policy.
 
 ## Sharing
 
@@ -28,8 +28,8 @@
 
 ## Security boundary
 
-- No remote code is downloaded or executed; the renderer is a fixed asset shipped with the app (`app/assets/intelligent_ui/renderer.js`).
-- CSP is `default-src 'none'`; scripts, styles and images are limited to local/data/blob; `connect-src 'none'`; `frame-src` allows only about/data/blob.
+- No remote code is downloaded or executed; the renderer is a fixed asset shipped with the app (`app/assets/intelligent_ui/renderer.js`, offline build with KaTeX/Mermaid bundled).
+- CSP is `default-src 'none'`; scripts and styles are limited to inline local/`data:`/`blob:`, `connect-src 'none'`, and `frame-src` allows only about/data/blob. Images default to `data:`/`blob:`; when the plugin policy explicitly sets `allowMedia: true`, remote `img-src`/`media-src` follow `mediaOrigins` (or `https:` when no origins are configured), and map tile origins come from `policy.mapTiles`.
 - Navigation is limited to `about:blank`, `about:srcdoc`, and `data:`; Android file and content access are off, universal access keeps the WebView default (off), and mixed content is never allowed.
 - A card's send action requires native confirmation and is scoped to the current host, session and live connection; one tap sends at most once.
 - Card height is bounded to 100–4000 px so an oversized page cannot blow up the chat.
@@ -39,3 +39,4 @@
 - Requires `deepseek-harness-intelligent-ui` 0.2.15 or a compatible portable-renderer protocol; the plugin stays installed in the engine, not in dsh-go.
 - Only the chat UI supports it; in the Web version the plugin's own web frontend handles rendering.
 - dsh-go does not implement every upstream catalog validation rule; the Dart side enforces bounded structural checks and lets the renderer interpret the component tree.
+See [intelligent-ui-coverage.md](intelligent-ui-coverage.md) for component coverage and tests.
