@@ -169,6 +169,7 @@ flutter:
     # intelligent-ui 便携渲染器（lib/ui/chat/intelligent_ui）。上游 MIT，
     # 复制来源与版本见同目录 VERSION 和 THIRD_PARTY_NOTICES.md。
     - assets/intelligent_ui/
+    - assets/intelligent_ui/licenses/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

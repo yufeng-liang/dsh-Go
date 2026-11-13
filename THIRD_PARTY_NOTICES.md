@@ -109,7 +109,7 @@ used with the author's permission.
 | 许可 | MIT |
 | 用途 | 聊天消息中的声明式 / widget / composition 智能 UI 卡片 |
 
-随包资源：`app/assets/intelligent_ui/renderer.js` 原样复制自上游 `renderer/renderer.js`；`app/assets/intelligent_ui/LICENSE` 与 `VERSION` 为上游同一版本的许可与版本说明。客户端侧的 `app/lib/state/intelligent_ui.dart`、`app/lib/ui/chat/intelligent_ui/` 参考并移植了上游 `src/portable/artifacts.js`、`src/compose/compose.js` 与 `renderer-src/` 的投影、校验和桥接结构，按本仓库的 Dart/Flutter 约定重写。上游未修改。
+随包资源：`app/assets/intelligent_ui/renderer.js` 原样复制自上游 `renderer/renderer.js`（offline 构建，内置 KaTeX/Mermaid 等库）；`app/assets/intelligent_ui/LICENSE`、`THIRD_PARTY_NOTICES.md`、`README.md` 与 `VERSION` 为上游同一版本的许可、第三方声明与版本说明；`app/assets/intelligent_ui/licenses/` 为 offline 包携带的第三方依赖许可原文。客户端侧的 `app/lib/state/intelligent_ui.dart`、`app/lib/ui/chat/intelligent_ui/` 参考并移植了上游 `src/portable/artifacts.js`、`src/compose/compose.js` 与 `renderer-src/` 的投影、校验和桥接结构，按本仓库的 Dart/Flutter 约定重写。上游未修改。
 
 ### DS Bot（Apache-2.0，已修改）
 

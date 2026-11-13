@@ -127,7 +127,12 @@ class _ToolRowState extends State<ToolRow> {
       if (widget.uiArtifact case final artifact?) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: IntelligentUiCard(artifact: artifact, onSendPrompt: widget.onSendPrompt, immersive: true),
+          child: IntelligentUiCard(
+            artifact: artifact,
+            onSendPrompt: widget.onSendPrompt,
+            immersive: true,
+            allowFullscreen: true,
+          ),
         );
       }
       if (isIntelligentUiTool(widget.item)) {
@@ -182,7 +187,12 @@ class _ToolRowState extends State<ToolRow> {
             child: widget.uiArtifact != null && widget.card == ToolCardPlacement.inline
                 // intelligent-ui 卡片：流式运行中先直接展示，结束后由折叠
                 // 逻辑把工具行收进过程、卡片留在外面。
-                ? IntelligentUiCard(artifact: widget.uiArtifact!, onSendPrompt: widget.onSendPrompt, immersive: true)
+                ? IntelligentUiCard(
+                    artifact: widget.uiArtifact!,
+                    onSendPrompt: widget.onSendPrompt,
+                    immersive: true,
+                    allowFullscreen: true,
+                  )
                 : isIntelligentUiTool(widget.item)
                 ? const IntelligentUiCardPlaceholder(immersive: true)
                 : switch (v.pluginView) {

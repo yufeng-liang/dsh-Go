@@ -1,0 +1,9 @@
+{
+  "name": "d3-array",
+  "version": "2.12.1",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d3/d3-array.git"
+  }
+}

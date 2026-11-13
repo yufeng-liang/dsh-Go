@@ -17,7 +17,7 @@
 - 卡片内部不做纵向滚动，也不占用横向手势：移除表格、代码块、diff 的内部 `max-height` 和横向滚动，表格固定宽度并把单元格内容自动换行。这样既避免“表格里滑不动、页面也不动”的双重滚动冲突，也避免和手机端“左右滑动打开侧栏”的手势冲突。
 - 卡片内容左右边距使用 0，尽量利用手机宽度；标题行仍沿用 `ChatCard` 的 16。
 - 交互：卡片内的表格、表单、Tab 等本地交互由 renderer 在 WebView 内处理；需要回到对话的 Choice/Button/Widget `sendPrompt` 会先弹原生确认，再校验主机、会话和连接后发到当前会话。卡片里的 `https://` 链接触发系统浏览器；下载链接走系统分享。只读回放页不发送消息。
-- 卡片高度仍受 `maxHeight` 限制；内容超出上限时由渲染器裁剪，后续可在不改变手势策略的前提下增加展开入口。
+- 卡片高度默认受 `maxHeight` 限制；长表格、图表和地图可点右上角全屏按钮进入独立页面查看，不改变聊天页的手势策略。
 
 ## 分享
 
@@ -28,8 +28,8 @@
 
 ## 安全边界
 
-- 不下载、不执行远端代码；renderer 是随 App 打包的固定版本（`app/assets/intelligent_ui/renderer.js`）。
-- CSP 为 `default-src 'none'`；脚本、样式、图片只允许本地/data/blob，`connect-src 'none'`，`frame-src` 只允许 about/data/blob。
+- 不下载、不执行远端代码；renderer 是随 App 打包的固定版本（`app/assets/intelligent_ui/renderer.js`，offline 构建，内置 KaTeX/Mermaid 等库）。
+- CSP 为 `default-src 'none'`；脚本、样式只允许本地内联/`data:`/`blob:`，`connect-src 'none'`，`frame-src` 只允许 about/data/blob。图片默认只允许 `data:`/`blob:`；当插件 policy 明确 `allowMedia: true` 时按 `mediaOrigins` 放行远程 `img-src`/`media-src`（未配置 origins 时为 `https:`），地图瓦片 origin 来自 `policy.mapTiles`。
 - 页面导航只放行 `about:blank`、`about:srcdoc`、`data:`；Android 侧关闭文件访问和内容访问，跨源访问保持 WebView 默认关闭，混合内容为 never。
 - 卡片的发送按钮必须经过原生确认，且只对当前主机、当前会话、当前连接生效；一次点击只发送一次。
 - 卡片高度限制在 100–4000 px，避免超大页面撑爆聊天。
@@ -39,3 +39,4 @@
 - 需要 `deepseek-harness-intelligent-ui` 0.2.15 或兼容的便携渲染器协议；不需要在 dsh-go 里安装该插件，插件仍安装在引擎侧。
 - 只有聊天界面支持；网页版里的行为由插件自己的 Web 前端负责。
 - dsh-go 不实现 `ui_patch` 的全部上游 catalog 校验规则，Dart 侧只做有界结构校验，具体组件树由 renderer 解释。
+组件覆盖与测试见 [intelligent-ui-coverage.md](intelligent-ui-coverage.md)。

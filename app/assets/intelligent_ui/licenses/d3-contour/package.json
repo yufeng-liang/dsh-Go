@@ -1,0 +1,9 @@
+{
+  "name": "d3-contour",
+  "version": "4.0.2",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d3/d3-contour.git"
+  }
+}

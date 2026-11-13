@@ -1,0 +1,9 @@
+{
+  "name": "three",
+  "version": "0.169.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrdoob/three.js"
+  }
+}

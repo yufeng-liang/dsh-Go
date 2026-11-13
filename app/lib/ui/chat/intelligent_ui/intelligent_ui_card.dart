@@ -65,16 +65,60 @@ String _escapedRendererCode(String rendererCode) {
   return code;
 }
 
-String buildIntelligentUiHtml({required String rendererCode, required String token}) {
+String _cspOrigin(Object? value) {
+  if (value is! String) return '';
+  final uri = Uri.tryParse(value);
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return '';
+  return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+}
+
+String _contentSecurityPolicy(Map<String, Object?> policy) {
+  final images = <String>{'data:', 'blob:'};
+  final media = <String>{};
+  final allowMedia = policy['allowMedia'] == true;
+  if (allowMedia) {
+    final origins =
+        (policy['mediaOrigins'] as List?)
+            ?.whereType<String>()
+            .map(_cspOrigin)
+            .where((origin) => origin.isNotEmpty)
+            .toSet() ??
+        const <String>{};
+    if (origins.isEmpty) {
+      images.add('https:');
+      media.add('https:');
+    } else {
+      images.addAll(origins);
+      media.addAll(origins);
+    }
+  }
+  final mapTiles = policy['mapTiles'];
+  if (mapTiles is Map) {
+    final origin = _cspOrigin(mapTiles['url']);
+    if (origin.isNotEmpty) images.add(origin);
+  }
+  final mediaSrc = media.isEmpty ? "'none'" : media.join(' ');
+  return "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; "
+      "style-src 'unsafe-inline'; img-src ${images.join(' ')}; media-src $mediaSrc; "
+      "font-src data:; connect-src 'none'; frame-src about: data: blob:; "
+      "form-action 'none'; base-uri 'none'";
+}
+
+String buildIntelligentUiHtml({
+  required String rendererCode,
+  required String token,
+  Map<String, Object?> policy = const {},
+}) {
   final code = _escapedRendererCode(rendererCode);
   final tokenJson = jsonEncode(token);
+  final csp = _contentSecurityPolicy(policy);
   return '''
 <!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src about: data: blob:; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="$csp">
 <style>$_mobileStyles</style>
 </head>
 <body>
@@ -202,6 +246,7 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
     this.onSendPrompt,
     this.readOnly = false,
     this.immersive = false,
+    this.allowFullscreen = false,
   });
 
   final IntelligentUiArtifact artifact;
@@ -214,6 +259,10 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
   /// Chat-stream widget cards are usually already fully styled by the widget
   /// itself. Skipping the outer [ChatCard] avoids a card-inside-a-card look.
   final bool immersive;
+
+  /// Whether the card offers a full-screen view. Full-screen is useful for
+  /// wide tables, charts and maps on a phone; share/replay cards leave it off.
+  final bool allowFullscreen;
 
   @override
   ConsumerState<IntelligentUiCard> createState() => _IntelligentUiCardState();
@@ -366,8 +415,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _guard = guard;
       _controller = controller;
       if (mounted) setState(() {});
+      final rendererArtifact = _renderArtifact(widget.artifact);
+      final rawPolicy = rendererArtifact['policy'];
+      final policy = rawPolicy is Map
+          ? rawPolicy.map((key, value) => MapEntry('$key', value))
+          : const <String, Object?>{};
       await controller.loadHtmlString(
-        buildIntelligentUiHtml(rendererCode: code, token: _token),
+        buildIntelligentUiHtml(rendererCode: code, token: _token, policy: policy),
         baseUrl: 'https://dsh.local/',
       );
     } catch (error) {
@@ -606,12 +660,35 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       ),
     );
     if (widget.immersive && widget.artifact.kind == IntelligentUiKind.widget) {
-      return _ImmersiveCard(title: title, child: cardBody);
+      return _ImmersiveCard(
+        title: title,
+        onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
+        child: cardBody,
+      );
     }
     return ChatCard(
       icon: AppIcons.generating,
       title: title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title,
+      trailing: widget.allowFullscreen
+          ? IconButton(
+              onPressed: _openFullscreen,
+              tooltip: l10n.activityStepFullScreen,
+              icon: const Icon(Icons.fullscreen, size: 20),
+            )
+          : null,
       children: [cardBody],
+    );
+  }
+
+  void _openFullscreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _IntelligentUiFullscreenPage(
+          artifact: widget.artifact,
+          onSendPrompt: widget.onSendPrompt,
+          readOnly: widget.readOnly,
+        ),
+      ),
     );
   }
 
@@ -643,9 +720,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 }
 
 class _ImmersiveCard extends StatelessWidget {
-  const _ImmersiveCard({this.title, required this.child});
+  const _ImmersiveCard({this.title, this.onFullscreen, required this.child});
 
   final String? title;
+  final VoidCallback? onFullscreen;
   final Widget child;
 
   @override
@@ -657,30 +735,69 @@ class _ImmersiveCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showTitle)
+        if (showTitle || onFullscreen != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
             child: Row(
               children: [
-                Icon(AppIcons.generating, size: 14, color: scheme.primary),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    title!.trim(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.2,
+                if (showTitle) ...[
+                  Icon(AppIcons.generating, size: 14, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      title!.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.2,
+                      ),
                     ),
                   ),
-                ),
+                ] else
+                  const Spacer(),
+                if (onFullscreen != null)
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: IconButton(
+                      onPressed: onFullscreen,
+                      padding: EdgeInsets.zero,
+                      tooltip: context.l10n.activityStepFullScreen,
+                      icon: const Icon(Icons.fullscreen, size: 18),
+                    ),
+                  ),
               ],
             ),
           ),
         child,
       ],
+    );
+  }
+}
+
+class _IntelligentUiFullscreenPage extends StatelessWidget {
+  const _IntelligentUiFullscreenPage({required this.artifact, this.onSendPrompt, required this.readOnly});
+
+  final IntelligentUiArtifact artifact;
+  final Future<bool> Function(String text)? onSendPrompt;
+  final bool readOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final title = artifact.title?.trim();
+    return Scaffold(
+      appBar: AppBar(title: Text(title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title)),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            IntelligentUiCard(artifact: artifact, onSendPrompt: onSendPrompt, readOnly: readOnly, immersive: true),
+          ],
+        ),
+      ),
     );
   }
 }
