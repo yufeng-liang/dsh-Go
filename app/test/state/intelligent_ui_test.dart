@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dsh_app/state/intelligent_ui.dart';
+import 'package:dsh_app/ui/theme/app_theme.dart';
 import 'package:dsh_app/ui/chat/intelligent_ui/intelligent_ui_native.dart';
 
 Map<String, Object?> _tree({String root = 'root'}) => {
@@ -220,11 +222,7 @@ void main() {
     test('adapts a dsh-go/portable html envelope to a widget artifact', () {
       final artifact = PortableUiAdapter.fromTool(
         item({
-          'dsh-go/portable': {
-            'kind': 'html',
-            'title': 'Portable card',
-            'html': '<p>hello</p>',
-          },
+          'dsh-go/portable': {'kind': 'html', 'title': 'Portable card', 'html': '<p>hello</p>'},
         }),
         hostId: 'h',
         sessionId: 's',
@@ -237,15 +235,19 @@ void main() {
 
     test('rejects scripts and unknown portable kinds', () {
       expect(
-        PortableUiAdapter.fromTool(item({
-          'dsh-go/portable': {'kind': 'html', 'html': '<script>x</script>'},
-        })),
+        PortableUiAdapter.fromTool(
+          item({
+            'dsh-go/portable': {'kind': 'html', 'html': '<script>x</script>'},
+          }),
+        ),
         isNull,
       );
       expect(
-        PortableUiAdapter.fromTool(item({
-          'dsh-go/portable': {'kind': 'react', 'html': '<p>x</p>'},
-        })),
+        PortableUiAdapter.fromTool(
+          item({
+            'dsh-go/portable': {'kind': 'react', 'html': '<p>x</p>'},
+          }),
+        ),
         isNull,
       );
     });
@@ -264,23 +266,62 @@ void main() {
 
     test('accepts a simple Text/Stat/Table tree', () {
       expect(
-        IntelligentUiNativePreview.supports(artifact([
-          {'id': 'root', 'type': 'Stack', 'children': ['title', 'stat']},
-          {'id': 'title', 'type': 'Text', 'props': {'text': 'Title'}},
-          {'id': 'stat', 'type': 'Stat', 'props': {'label': 'Users', 'value': '42'}},
-        ], 'root')),
+        IntelligentUiNativePreview.supports(
+          artifact([
+            {
+              'id': 'root',
+              'type': 'Stack',
+              'children': ['title', 'stat'],
+            },
+            {
+              'id': 'title',
+              'type': 'Text',
+              'props': {'text': 'Title'},
+            },
+            {
+              'id': 'stat',
+              'type': 'Stat',
+              'props': {'label': 'Users', 'value': '42'},
+            },
+          ], 'root'),
+        ),
         isTrue,
       );
     });
 
     test('rejects charts and unsupported nodes', () {
       expect(
-        IntelligentUiNativePreview.supports(artifact([
-          {'id': 'root', 'type': 'Chart', 'props': {'kind': 'bar'}},
-        ], 'root')),
+        IntelligentUiNativePreview.supports(
+          artifact([
+            {
+              'id': 'root',
+              'type': 'Chart',
+              'props': {'kind': 'bar'},
+            },
+          ], 'root'),
+        ),
         isFalse,
       );
     });
-  });
 
+    testWidgets('renders Text markdown instead of raw link syntax', (tester) async {
+      final ui = artifact([
+        {
+          'id': 'root',
+          'type': 'Text',
+          'props': {'text': '正文包含一个 Markdown 链接：[Example](https://example.com)'},
+        },
+      ], 'root');
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          home: Scaffold(body: Builder(builder: (context) => IntelligentUiNativePreview.tryBuild(context, ui)!)),
+        ),
+      );
+      expect(
+        find.byWidgetPredicate((widget) => widget is Text && (widget.data?.contains('[Example]') ?? false)),
+        findsNothing,
+      );
+    });
+  });
 }
