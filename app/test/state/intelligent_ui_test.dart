@@ -200,6 +200,24 @@ void main() {
       );
     });
 
+    test('incremental PTC dispatch anchors to the assistant message seq', () {
+      // 实时流里增量投影只喂 assistant 锚点 + ptc-dispatch（chat_state 只收集
+      // 这些进增量队列）；originSeq 必须与全量重放一致，否则子卡挂不上工具行。
+      final assistant = _assistantWithToolCall(1, 'root-a', 'run_code');
+      final dispatch = UnknownEvent(2, DateTime(2026, 1, 1), 'tool/ptc-dispatch', {
+        'name': 'ui_render',
+        'subCallId': 'sub-a',
+        'rootCallId': 'root-a',
+        'arguments': _tree(),
+        'meta': {'ok': true},
+      });
+      final incremental = IntelligentUiProjection(hostId: 'h', sessionId: 's');
+      incremental.applyAll([assistant]);
+      incremental.applyPending([dispatch]);
+      expect(incremental.artifacts, hasLength(1));
+      expect(incremental.artifacts.single.originSeq, 1);
+    });
+
     test('rejects widget html containing a script tag', () {
       final events = <SessionLogEvent>[
         _call(1, 'widget-a', 'ui_render_widget', {'html': '<script>alert(1)</script>'}),
