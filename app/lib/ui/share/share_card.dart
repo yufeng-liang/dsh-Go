@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import '../../l10n/l10n.dart';
 import '../../state/app_info.dart';
 import '../../state/intelligent_ui.dart';
+import '../chat/intelligent_ui/intelligent_ui_native.dart';
 import '../chat/intelligent_ui/intelligent_ui_card.dart';
 import '../chat/render/code_block.dart' show highlightCode;
 import '../chat/render/markdown_body.dart';
@@ -881,9 +882,18 @@ class ShareIntelligentUiCardView extends StatelessWidget {
       return IntelligentUiCard(artifact: _shareArtifact(card), readOnly: true);
     }
     final bodyWidth = width == null ? 336.0 : width! - 16;
-    final body = (card.artifact != null || card.widget != null)
-        ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
-        : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16);
+    final artifact = (card.artifact != null) ? _shareArtifact(card) : null;
+    // Declarative cards are pure Flutter widgets in the native fast path. Use
+    // the same renderer here so the share preview and the share image keep the
+    // chat card's text layout instead of degrading to Markdown.
+    final native = artifact != null && artifact.kind == IntelligentUiKind.declarative
+        ? IntelligentUiNativePreview.tryBuild(context, artifact)
+        : null;
+    final body =
+        native ??
+        ((card.artifact != null || card.widget != null)
+            ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
+            : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16));
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final title = card.title ?? appL10n.chatIntelligentUiTitle;

@@ -181,9 +181,9 @@ String buildIntelligentUiHtml({
 
 /// Lets a widget's grid/flex children shrink to the card width.
 const _widgetFitCss = '''
-html,body{background:transparent!important;margin:0!important;padding:0!important;border-radius:0!important}
+html,body{background:transparent!important;margin:0!important;padding:0!important;border-radius:0!important;overflow:hidden!important}
 *{box-sizing:border-box!important;min-width:0!important}
-#ui-root{padding:0!important;background:transparent!important;border-radius:0!important}
+#ui-root{padding:0!important;background:transparent!important;border-radius:0!important;overflow:hidden!important}
 ''';
 
 /// widget iframe 里的普通 <a href> 会导航 iframe 并被 renderer 移除；捕获点击后
