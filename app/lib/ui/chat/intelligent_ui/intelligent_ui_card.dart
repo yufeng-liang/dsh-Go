@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -269,8 +267,6 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
 }
 
 class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
-  static Future<String>? _rendererCode;
-
   final _actions = UiActionGuard();
   late String _token;
   WebViewController? _controller;
@@ -296,7 +292,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   @override
   void initState() {
     super.initState();
-    _token = _newToken();
+    _token = '';
     _dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
     _locale = _localeOf(context);
     _load();
@@ -355,8 +351,6 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final generation = ++_loadGeneration;
     const background = Colors.transparent;
     try {
-      final code = await (_rendererCode ??= rootBundle.loadString('assets/intelligent_ui/renderer.js'));
-      if (!mounted || generation != _loadGeneration) return;
       final controller = WebViewController();
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setBackgroundColor(background);
@@ -365,7 +359,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         NavigationDelegate(
           onNavigationRequest: (request) {
             final url = request.url;
-            return url == 'about:blank' || url.startsWith('about:srcdoc') || url.startsWith('data:')
+            return url == 'about:blank' ||
+                    url.startsWith('about:srcdoc') ||
+                    url.startsWith('data:') ||
+                    url.startsWith('https://appassets.androidplatform.net/')
                 ? NavigationDecision.navigate
                 : NavigationDecision.prevent;
           },
@@ -415,17 +412,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _guard = guard;
       _controller = controller;
       if (mounted) setState(() {});
-      final rendererArtifact = _renderArtifact(widget.artifact);
-      final rawPolicy = rendererArtifact['policy'];
-      final policy = rawPolicy is Map
-          ? rawPolicy.map((key, value) => MapEntry('$key', value))
-          : const <String, Object?>{};
-      await controller.loadHtmlString(
-        buildIntelligentUiHtml(rendererCode: code, token: _token, policy: policy),
-        baseUrl: 'https://dsh.local/',
-      );
+      await controller.loadFlutterAsset('assets/intelligent_ui/shell.html');
     } catch (error) {
-      _rendererCode = null;
       if (generation == _loadGeneration) _setError('$error');
     }
   }
@@ -496,10 +484,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   Future<void> _onMessage(JavaScriptMessage message) async {
     if (!mounted || _gone) return;
-    final parsed = parseIntelligentUiBridgeMessage(message.message, _token);
+    final parsed = parseIntelligentUiBridgeMessage(message.message, _token, allowAnyToken: !_ready);
     if (parsed == null) return;
     switch (parsed.type) {
       case 'ready':
+        _token = parsed.token;
         _ready = true;
         _postArtifact();
         _setTheme(_dark);
@@ -659,24 +648,33 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         child: child,
       ),
     );
+    final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
     if (widget.immersive && widget.artifact.kind == IntelligentUiKind.widget) {
-      return _ImmersiveCard(
-        title: title,
-        onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
-        child: cardBody,
+      return Semantics(
+        container: true,
+        label: semanticTitle,
+        child: _ImmersiveCard(
+          title: title,
+          onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
+          child: cardBody,
+        ),
       );
     }
-    return ChatCard(
-      icon: AppIcons.generating,
-      title: title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title,
-      trailing: widget.allowFullscreen
-          ? IconButton(
-              onPressed: _openFullscreen,
-              tooltip: l10n.activityStepFullScreen,
-              icon: const Icon(Icons.fullscreen, size: 20),
-            )
-          : null,
-      children: [cardBody],
+    return Semantics(
+      container: true,
+      label: semanticTitle,
+      child: ChatCard(
+        icon: AppIcons.generating,
+        title: semanticTitle,
+        trailing: widget.allowFullscreen
+            ? IconButton(
+                onPressed: _openFullscreen,
+                tooltip: l10n.activityStepFullScreen,
+                icon: const Icon(Icons.fullscreen, size: 20),
+              )
+            : null,
+        children: [cardBody],
+      ),
     );
   }
 
@@ -707,15 +705,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     _error = null;
     _ready = false;
     _height = 96;
-    _token = _newToken();
+    _token = '';
     _actions.reset();
     _load();
-  }
-
-  static String _newToken() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }
 
