@@ -222,9 +222,15 @@ List<ChatRow> deriveRows({
   debugDeriveRowsCount++;
   final rows = <ChatRow>[];
   final attached = <String>{};
+  final portableUis = <IntelligentUiArtifact>[];
+  for (final item in items) {
+    if (item is! ToolChatItem) continue;
+    final ui = PortableUiAdapter.fromTool(item);
+    if (ui != null) portableUis.add(ui);
+  }
   final uiByCall = <String, List<IntelligentUiArtifact>>{};
   final uiBySeq = <int, List<IntelligentUiArtifact>>{};
-  for (final ui in intelligentUis) {
+  for (final ui in <IntelligentUiArtifact>[...intelligentUis, ...portableUis]) {
     (uiByCall[ui.uiId] ??= []).add(ui);
     if (ui.originSeq case final seq?) (uiBySeq[seq] ??= []).add(ui);
   }

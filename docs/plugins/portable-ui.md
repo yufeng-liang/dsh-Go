@@ -36,3 +36,11 @@ dsh-go 不要求每个 UI 插件都适配自己的原生组件；聊天消息里
 ## 适配优先级
 
 先做 `html/widget.html` 通用适配器（覆盖最多现有插件），再做 `card/kind` 结构化适配，最后把协议写入 SDK 文档和插件模板。intelligent-ui 的 `ui` artifact 是优先级 2 的特例，已有完整实现。
+
+## App 实现状态
+
+dsh-Go 的 `PortableUiAdapter`（`app/lib/state/intelligent_ui.dart`）已识别
+`presentationMeta['dsh-go/portable']` 的 `html` / `structured` / `media` 三种
+kind，并把它们转换为受限的智能 UI widget 卡片；HTML 中含 `<script>` 或未知
+kind 会被忽略，保留普通工具行。插件只需输出上面的 envelope，不需要依赖
+intelligent-ui 的特定数据结构。

@@ -205,4 +205,49 @@ void main() {
       expect(IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's'), isEmpty);
     });
   });
+  group('PortableUiAdapter', () {
+    ToolChatItem item(Object? meta) => ToolChatItem(
+      callId: 'call-portable',
+      name: 'render_ui',
+      arguments: '{}',
+      status: ToolStatus.succeeded,
+      seq: 9,
+      resultParts: const [],
+      meta: meta,
+    );
+
+    test('adapts a dsh-go/portable html envelope to a widget artifact', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'dsh-go/portable': {
+            'kind': 'html',
+            'title': 'Portable card',
+            'html': '<p>hello</p>',
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, IntelligentUiKind.widget);
+      expect(artifact.definition['html'], '<p>hello</p>');
+      expect(artifact.title, 'Portable card');
+    });
+
+    test('rejects scripts and unknown portable kinds', () {
+      expect(
+        PortableUiAdapter.fromTool(item({
+          'dsh-go/portable': {'kind': 'html', 'html': '<script>x</script>'},
+        })),
+        isNull,
+      );
+      expect(
+        PortableUiAdapter.fromTool(item({
+          'dsh-go/portable': {'kind': 'react', 'html': '<p>x</p>'},
+        })),
+        isNull,
+      );
+    });
+  });
+
 }
