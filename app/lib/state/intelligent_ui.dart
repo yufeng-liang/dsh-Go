@@ -8,6 +8,13 @@ import 'package:dsh_client/dsh_client.dart';
 /// 结构，由 renderer 负责具体的 catalog / widget / composition 渲染。
 enum IntelligentUiKind { declarative, widget, composition }
 
+/// Tools that create an intelligent-UI card. `ui_patch` updates an existing
+/// card and never creates a new one.
+const intelligentUiToolNames = <String>{'ui_render', 'ui_render_widget', 'ui_compose'};
+
+bool isIntelligentUiTool(ToolChatItem item) =>
+    item.status == ToolStatus.succeeded && intelligentUiToolNames.contains(item.name);
+
 class IntelligentUiArtifact {
   const IntelligentUiArtifact({
     required this.kind,

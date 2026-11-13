@@ -20,6 +20,7 @@ import '../../../state/intelligent_ui.dart';
 import '../../../state/sessions_state.dart' show currentSessionProvider;
 import '../../common/app_dialog.dart';
 import '../../theme/app_icons.dart';
+import '../../theme/theme.dart';
 import '../../web/web_view_guard.dart';
 import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
@@ -167,6 +168,32 @@ const _widgetLinkBridge = r'''
   document.addEventListener('click', onClick, true);
 })();
 ''';
+
+/// A lightweight stand-in while the history projection is still resolving a
+/// tool call into an [IntelligentUiArtifact].
+class IntelligentUiCardPlaceholder extends StatelessWidget {
+  const IntelligentUiCardPlaceholder({super.key, this.immersive = false});
+
+  final bool immersive;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = const Padding(
+      padding: EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: SizedBox(height: 96, child: Center(child: CircularProgressIndicator())),
+    );
+    if (immersive) {
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        shape: RoundedSuperellipseBorder(borderRadius: AppShape.radiusLg),
+        child: Padding(padding: const EdgeInsets.fromLTRB(8, 8, 8, 10), child: body),
+      );
+    }
+    return ChatCard(icon: AppIcons.generating, title: context.l10n.chatIntelligentUiTitle, children: [body]);
+  }
+}
 
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({
