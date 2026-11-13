@@ -72,31 +72,43 @@ String _cspOrigin(Object? value) {
   return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
 }
 
-String _contentSecurityPolicy(Map<String, Object?> policy) {
-  final images = <String>{'data:', 'blob:'};
-  final media = <String>{};
-  final allowMedia = policy['allowMedia'] == true;
-  if (allowMedia) {
-    final origins =
-        (policy['mediaOrigins'] as List?)
-            ?.whereType<String>()
-            .map(_cspOrigin)
-            .where((origin) => origin.isNotEmpty)
-            .toSet() ??
-        const <String>{};
-    if (origins.isEmpty) {
-      images.add('https:');
-      media.add('https:');
-    } else {
-      images.addAll(origins);
-      media.addAll(origins);
-    }
+/// Origins a card's policy lets it load images from, beyond `data:`/`blob:`.
+///
+/// `allowMedia` without `mediaOrigins` means every https source; explicit
+/// origins narrow it. Map tiles are images too, so their origin is allowed even
+/// when `allowMedia` stays off.
+Set<String> intelligentUiImageOrigins(Map<String, Object?> policy) {
+  final images = <String>{};
+  if (policy['allowMedia'] == true) {
+    final origins = _mediaOrigins(policy);
+    images.addAll(origins.isEmpty ? const {'https:'} : origins);
   }
   final mapTiles = policy['mapTiles'];
   if (mapTiles is Map) {
     final origin = _cspOrigin(mapTiles['url']);
     if (origin.isNotEmpty) images.add(origin);
   }
+  return images;
+}
+
+/// Origins a card's policy lets it load video/audio from.
+Set<String> intelligentUiMediaOrigins(Map<String, Object?> policy) {
+  if (policy['allowMedia'] != true) return const <String>{};
+  final origins = _mediaOrigins(policy);
+  return origins.isEmpty ? const {'https:'} : origins;
+}
+
+Set<String> _mediaOrigins(Map<String, Object?> policy) =>
+    (policy['mediaOrigins'] as List?)
+        ?.whereType<String>()
+        .map(_cspOrigin)
+        .where((origin) => origin.isNotEmpty)
+        .toSet() ??
+    const <String>{};
+
+String _contentSecurityPolicy(Map<String, Object?> policy) {
+  final images = <String>{'data:', 'blob:', ...intelligentUiImageOrigins(policy)};
+  final media = intelligentUiMediaOrigins(policy);
   final mediaSrc = media.isEmpty ? "'none'" : media.join(' ');
   return "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; "
       "style-src 'unsafe-inline'; img-src ${images.join(' ')}; media-src $mediaSrc; "
