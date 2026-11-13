@@ -24,7 +24,14 @@ String buildIntelligentUiSnapshotHtml({
     final html = definition['html'];
     final css = definition['css'];
     if (html is String && html.isNotEmpty) {
-      return _buildWidgetSnapshotHtml(html: html, css: css is String ? css : '', dark: dark);
+      return _buildWidgetSnapshotHtml(
+        html: html,
+        css: css is String ? css : '',
+        dark: dark,
+        policy: artifact['policy'] is Map
+            ? (artifact['policy'] as Map).map((key, value) => MapEntry('$key', value))
+            : const <String, Object?> {},
+      );
     }
   }
   final rawPolicy = artifact['policy'];
@@ -73,7 +80,14 @@ String _buildWidgetSnapshotHtml({
   required String html,
   required String css,
   required bool dark,
+  required Map<String, Object?> policy,
 }) {
+  final allowMedia = policy['allowMedia'] == true;
+  final origins = (policy['mediaOrigins'] is List)
+      ? (policy['mediaOrigins'] as List).whereType<String>().where((origin) => Uri.tryParse(origin)?.hasScheme == true).toList()
+      : const <String>[];
+  final mediaSrc = !allowMedia ? "'none'" : (origins.isEmpty ? 'https:' : origins.join(' '));
+  final imgSrc = allowMedia ? 'data: blob: $mediaSrc' : 'data: blob:';
   final bg = dark ? '#151517' : '#ffffff';
   final surface = dark ? '#232324' : '#f5f6f7';
   final text = dark ? '#f9fafb' : '#0f1115';
@@ -84,6 +98,7 @@ String _buildWidgetSnapshotHtml({
   final safeCss = css.replaceAll(RegExp(r'</style', caseSensitive: false), r'<\/style');
   return '''<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src $imgSrc; media-src $mediaSrc; style-src 'unsafe-inline'; font-src data:;">
 <style>
 :root{--ui-bg:$bg;--ui-surface:$surface;--ui-text:$text;--ui-muted:$muted;--ui-border:$border;--ui-accent:$accent;--ui-accent-text:$accentText;--ui-radius:8px;--ui-font:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;--ui-mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:${dark ? 'dark' : 'light'}}
 *,*::before,*::after{box-sizing:border-box}

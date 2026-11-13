@@ -14,11 +14,9 @@ void main() {
       dark: true,
       locale: 'zh-CN',
     );
-    expect(html, contains('window.renderer = true;'));
-    expect(html, contains('window.__diuiSetTheme("dark")'));
-    expect(html, contains('window.__diuiSetLocale("zh-CN")'));
-    expect(html, contains('window.__diuiSetArtifact('));
-    expect(html, contains(r'\u003cp style='));
+    expect(html, contains('<div id="ui-root">'));
+    expect(html, contains('A & B'));
+    expect(html, isNot(contains('window.renderer = true;')));
     expect(html, contains("type:'captureReady'"));
   });
 
@@ -46,10 +44,10 @@ void main() {
     final html = buildIntelligentUiSnapshotHtml(
       rendererCode: 'var fake = "</body>"; window.renderer = true;',
       artifact: const {
-        'kind': 'widget',
+        'kind': 'declarative',
         'uiId': 'share-1',
         'version': 1,
-        'definition': {'html': '<p>Hello</p>'},
+        'definition': {'root': 'root', 'components': []},
       },
       dark: false,
       locale: 'en',
