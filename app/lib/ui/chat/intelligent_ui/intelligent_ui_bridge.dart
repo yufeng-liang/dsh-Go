@@ -25,7 +25,7 @@ class IntelligentUiBridgeMessage {
 
 /// 解析并校验页面回传的 JSON。规则与 remote 的
 /// `parseUiBridgeMessage` 保持一致：限制消息长度，必须是对象，token 必须匹配。
-IntelligentUiBridgeMessage? parseIntelligentUiBridgeMessage(Object? raw, String token) {
+IntelligentUiBridgeMessage? parseIntelligentUiBridgeMessage(Object? raw, String token, {bool allowAnyToken = false}) {
   if (raw is! String || raw.length > 32768) return null;
   Object? decoded;
   try {
@@ -38,10 +38,11 @@ IntelligentUiBridgeMessage? parseIntelligentUiBridgeMessage(Object? raw, String 
     for (final entry in decoded.entries)
       if (entry.key is String) entry.key as String: entry.value,
   };
-  if (data['token'] != token) return null;
+  if (!allowAnyToken && data['token'] != token) return null;
+  final actualToken = data['token'] is String ? data['token'] as String : token;
   final type = data['type'];
   if (type is! String || type.isEmpty) return null;
-  return IntelligentUiBridgeMessage(token: token, type: type, data: data);
+  return IntelligentUiBridgeMessage(token: actualToken, type: type, data: data);
 }
 
 /// `ui_render` 卡片里的动作闸门。
