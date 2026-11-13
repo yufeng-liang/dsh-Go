@@ -631,7 +631,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final title = widget.artifact.title?.trim();
+    final title = (widget.artifact.title ?? IntelligentUiNativePreview.titleOf(widget.artifact))?.trim();
     final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
     final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
     if (nativePreview != null) {
@@ -821,7 +821,7 @@ class _IntelligentUiFullscreenPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final title = artifact.title?.trim();
+    final title = (artifact.title ?? IntelligentUiNativePreview.titleOf(artifact))?.trim();
     return Scaffold(
       appBar: AppBar(title: Text(title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title)),
       body: SafeArea(
