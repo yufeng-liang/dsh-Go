@@ -11,6 +11,21 @@ class IntelligentUiNativePreview {
 
   static const _supported = {'Text', 'Stat', 'Table', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
 
+  /// A catalog Card may carry its heading in `props.title`, while the tool
+  /// call itself has no title. Use it as the card heading so native cards
+  /// don't show a generic fallback while their text heading is dropped.
+  static String? titleOf(IntelligentUiArtifact artifact) {
+    if (artifact.kind != IntelligentUiKind.declarative) return null;
+    final nodes = _nodes(artifact.definition);
+    final root = artifact.definition['root'];
+    if (nodes == null || root is! String) return null;
+    final node = nodes[root];
+    if (node == null || node['type'] != 'Card') return null;
+    final title = _props(node)['title'];
+    if (title is! String || title.trim().isEmpty) return null;
+    return title.trim();
+  }
+
   static bool supports(IntelligentUiArtifact artifact) {
     if (artifact.kind != IntelligentUiKind.declarative) return false;
     final nodes = _nodes(artifact.definition);
