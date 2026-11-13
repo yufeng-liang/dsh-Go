@@ -113,7 +113,10 @@ class _ToolRowState extends State<ToolRow> {
   bool _expandedFor(ToolView v) =>
       _toggled ??
       (widget.card == ToolCardPlacement.inline &&
-          (widget.uiArtifact != null || v.pluginView is DshUiParsed || v.media != null));
+          (widget.uiArtifact != null ||
+              isIntelligentUiTool(widget.item) ||
+              v.pluginView is DshUiParsed ||
+              v.media != null));
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +128,12 @@ class _ToolRowState extends State<ToolRow> {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: IntelligentUiCard(artifact: artifact, onSendPrompt: widget.onSendPrompt, immersive: true),
+        );
+      }
+      if (isIntelligentUiTool(widget.item)) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 4),
+          child: IntelligentUiCardPlaceholder(immersive: true),
         );
       }
       if (v.media case final media?) {
@@ -160,7 +169,7 @@ class _ToolRowState extends State<ToolRow> {
           titled:
               !(expanded &&
                   widget.card == ToolCardPlacement.inline &&
-                  (v.pluginView is DshUiParsed || widget.uiArtifact != null)),
+                  (v.pluginView is DshUiParsed || widget.uiArtifact != null || isIntelligentUiTool(widget.item))),
           onTap: () {
             if (child != null && opener!(child)) return;
             setState(() => _toggled = !expanded);
@@ -174,6 +183,8 @@ class _ToolRowState extends State<ToolRow> {
                 // intelligent-ui 卡片：流式运行中先直接展示，结束后由折叠
                 // 逻辑把工具行收进过程、卡片留在外面。
                 ? IntelligentUiCard(artifact: widget.uiArtifact!, onSendPrompt: widget.onSendPrompt, immersive: true)
+                : isIntelligentUiTool(widget.item)
+                ? const IntelligentUiCardPlaceholder(immersive: true)
                 : switch (v.pluginView) {
                     // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
                     _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),

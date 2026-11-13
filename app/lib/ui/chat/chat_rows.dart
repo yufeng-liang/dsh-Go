@@ -228,8 +228,7 @@ List<ChatRow> deriveRows({
     (uiByCall[ui.uiId] ??= []).add(ui);
     if (ui.originSeq case final seq?) (uiBySeq[seq] ??= []).add(ui);
   }
-  List<IntelligentUiArtifact> uiFor(ToolChatItem tool) =>
-      uiByCall[tool.callId] ?? uiBySeq[tool.seq] ?? const [];
+  List<IntelligentUiArtifact> uiFor(ToolChatItem tool) => uiByCall[tool.callId] ?? uiBySeq[tool.seq] ?? const [];
   var tools = <ToolChatItem>[];
   var nextCommand = 0;
 
