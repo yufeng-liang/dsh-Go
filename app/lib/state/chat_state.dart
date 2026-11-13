@@ -891,6 +891,11 @@ class ChatController extends Notifier<ChatState> {
               _uiToolCalls.clear();
               _uiProjectionNeedsReplay = true;
               _intelligentUiDirty = true;
+            } else if (event is AssistantMessageEvent && event.message.toolCalls.isNotEmpty) {
+              // 增量投影也要拿到根调用的锚点（rootSeqs 用 assistant 消息的
+              // seq 匹配工具行）；缺了它，实时流的 PTC 子卡挂不上行，只有
+              // 重进会话全量重放才出现。
+              _pendingUiEvents.add(event);
             } else if (event is ToolCallEvent) {
               if (IntelligentUiProjector.isUiToolName(event.name)) {
                 _uiToolCalls.add(event.callId);
