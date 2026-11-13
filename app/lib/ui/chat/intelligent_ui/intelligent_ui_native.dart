@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../state/intelligent_ui.dart';
+import '../render/markdown_body.dart';
 
 /// A lightweight native renderer for the most common, fully static
 /// declarative cards. Anything outside this small subset falls back to the
@@ -8,18 +9,7 @@ import '../../../state/intelligent_ui.dart';
 class IntelligentUiNativePreview {
   const IntelligentUiNativePreview._();
 
-  static const _supported = {
-    'Text',
-    'Stat',
-    'Table',
-    'Badge',
-    'Divider',
-    'List',
-    'Progress',
-    'Stack',
-    'Grid',
-    'Card',
-  };
+  static const _supported = {'Text', 'Stat', 'Table', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
 
   static bool supports(IntelligentUiArtifact artifact) {
     if (artifact.kind != IntelligentUiKind.declarative) return false;
@@ -67,12 +57,7 @@ class IntelligentUiNativePreview {
     return nodes;
   }
 
-  static Widget? _buildNode(
-    BuildContext context,
-    String id,
-    Map<String, Map<String, Object?>> nodes,
-    int depth,
-  ) {
+  static Widget? _buildNode(BuildContext context, String id, Map<String, Map<String, Object?>> nodes, int depth) {
     if (depth > 8) return null;
     final node = nodes[id];
     if (node == null) return null;
@@ -81,16 +66,10 @@ class IntelligentUiNativePreview {
       case 'Text':
         final text = _string(props['text']);
         if (text == null) return null;
-        final variant = _string(props['variant']);
-        return Text(
-          text,
-          style: switch (variant) {
-            'title' => Theme.of(context).textTheme.titleMedium,
-            'heading' => Theme.of(context).textTheme.titleSmall,
-            'caption' => Theme.of(context).textTheme.labelSmall,
-            _ => Theme.of(context).textTheme.bodyMedium,
-          },
-        );
+        // The catalog Text component explicitly supports a markdown subset
+        // (bold/italic/code/links). Render it with the shared markdown body so
+        // links stay clickable instead of showing raw [label](url) syntax.
+        return MarkdownBody(text: text, scale: 13 / 16);
       case 'Stat':
         final label = _string(props['label']);
         final value = _string(props['value']);
