@@ -85,6 +85,96 @@ class IntelligentUiArtifact {
 /// 对应上游 `src/portable/artifacts.js` 的 `projectNativeUiEvents`。每次都
 /// 从完整日志重算，因此历史分页、重连快照和实时事件走同一条路径，不需要
 /// 在客户端保存脆弱的增量状态。
+/// 通用 `dsh-go/portable` 工具结果适配器。
+///
+/// 第三方插件不必依赖 intelligent-ui 的 renderer：只要在
+/// `presentationMeta['dsh-go/portable']` 里提供可序列化的 HTML/结构化字段，
+/// App 就能用现有的智能 UI 卡片壳渲染。
+class PortableUiAdapter {
+  const PortableUiAdapter._();
+
+  static final _script = RegExp(r'<script[\s>]', caseSensitive: false);
+
+  static IntelligentUiArtifact? fromTool(
+    ToolChatItem item, {
+    String hostId = '',
+    String sessionId = '',
+  }) {
+    final meta = item.meta;
+    if (meta is! Map) return null;
+    final raw = meta['dsh-go/portable'];
+    if (raw is! Map) return null;
+    final map = raw.cast<String, Object?>();
+    final seq = item.seq;
+    if (seq == null) return null;
+    final kind = IntelligentUiProjector._asString(map['kind']);
+    final title = IntelligentUiProjector._asString(map['title']);
+    final policy = IntelligentUiProjector._asMap(map['policy']) ?? const <String, Object?>{};
+    final definition = switch (kind) {
+      'html' => _htmlDefinition(map),
+      'structured' => _structuredDefinition(map),
+      'media' => _mediaDefinition(map),
+      _ => null,
+    };
+    if (definition == null) return null;
+    if (!IntelligentUiProjector._validWidget(definition)) return null;
+    return IntelligentUiArtifact(
+      kind: IntelligentUiKind.widget,
+      hostId: hostId,
+      sessionId: sessionId,
+      uiId: item.callId,
+      version: 1,
+      definition: definition,
+      seq: seq,
+      title: title,
+      policy: policy,
+      originSeq: seq,
+    );
+  }
+
+  static Map<String, Object?>? _htmlDefinition(Map<String, Object?> map) {
+    final html = IntelligentUiProjector._asString(map['html']);
+    if (html == null || html.isEmpty || _script.hasMatch(html)) return null;
+    final css = IntelligentUiProjector._asString(map['css']);
+    return {'html': html, 'css': css ?? '', 'initialHeight': 48};
+  }
+
+  static Map<String, Object?>? _structuredDefinition(Map<String, Object?> map) {
+    final fields = IntelligentUiProjector._asList(map['fields']);
+    final title = IntelligentUiProjector._asString(map['title']);
+    final buffer = StringBuffer();
+    if (title != null && title.isNotEmpty) {
+      buffer.write('<h2>${const HtmlEscape().convert(title)}</h2>');
+    }
+    for (final field in fields) {
+      final f = IntelligentUiProjector._asMap(field);
+      if (f == null) continue;
+      final label = IntelligentUiProjector._asString(f['label']) ?? '';
+      final value = IntelligentUiProjector._asString(f['value']) ?? '';
+      buffer
+        ..write('<p><strong>${const HtmlEscape().convert(label)}</strong> ')
+        ..write('${const HtmlEscape().convert(value)}</p>');
+    }
+    if (buffer.isEmpty) return null;
+    return {
+      'html': '<div class="dsh-portable">${buffer.toString()}</div>',
+      'css': '.dsh-portable{font:13px sans-serif;line-height:1.45;padding:8px}',
+      'initialHeight': 48,
+    };
+  }
+
+  static Map<String, Object?>? _mediaDefinition(Map<String, Object?> map) {
+    final url = IntelligentUiProjector._asString(map['url']);
+    if (url == null || url.isEmpty || !url.startsWith('https://')) return null;
+    final escaped = const HtmlEscape().convert(url);
+    return {
+      'html': '<img class="dsh-portable-media" src="$escaped" alt="">',
+      'css': '.dsh-portable-media{display:block;max-width:100%;height:auto;border-radius:8px}',
+      'initialHeight': 48,
+    };
+  }
+}
+
 class IntelligentUiProjector {
   const IntelligentUiProjector._();
 
