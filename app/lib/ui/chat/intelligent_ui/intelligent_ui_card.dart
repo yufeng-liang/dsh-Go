@@ -22,6 +22,7 @@ import '../../theme/theme.dart';
 import '../../web/web_view_guard.dart';
 import '../widgets/chat_card.dart';
 import 'intelligent_ui_bridge.dart';
+import 'intelligent_ui_native.dart';
 
 const _mobileStyles = '''
 html,body{padding:0!important;margin:0!important;height:auto!important;min-height:0!important;overflow-x:hidden;background:transparent!important;-webkit-tap-highlight-color:transparent}
@@ -348,6 +349,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   }
 
   Future<void> _load() async {
+    if (IntelligentUiNativePreview.supports(widget.artifact)) return;
     final generation = ++_loadGeneration;
     const background = Colors.transparent;
     try {
@@ -616,6 +618,30 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   @override
   Widget build(BuildContext context) {
+    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
+    if (nativePreview != null) {
+      final body = Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: nativePreview,
+      );
+      if (widget.immersive) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            shape: RoundedSuperellipseBorder(borderRadius: AppShape.radiusLg),
+            child: body,
+          ),
+        );
+      }
+      return ChatCard(
+        icon: AppIcons.generating,
+        title: widget.artifact.title ?? context.l10n.chatIntelligentUiTitle,
+        children: [body],
+      );
+    }
     final l10n = context.l10n;
     final child = _gone
         ? _Unavailable(

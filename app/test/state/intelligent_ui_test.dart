@@ -4,6 +4,7 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dsh_app/state/intelligent_ui.dart';
+import 'package:dsh_app/ui/chat/intelligent_ui/intelligent_ui_native.dart';
 
 Map<String, Object?> _tree({String root = 'root'}) => {
   'root': root,
@@ -246,6 +247,38 @@ void main() {
           'dsh-go/portable': {'kind': 'react', 'html': '<p>x</p>'},
         })),
         isNull,
+      );
+    });
+  });
+
+  group('IntelligentUiNativePreview', () {
+    IntelligentUiArtifact artifact(List<Map<String, Object?>> components, String root) => IntelligentUiArtifact(
+      kind: IntelligentUiKind.declarative,
+      hostId: 'h',
+      sessionId: 's',
+      uiId: 'native',
+      version: 1,
+      definition: {'root': root, 'components': components},
+      seq: 1,
+    );
+
+    test('accepts a simple Text/Stat/Table tree', () {
+      expect(
+        IntelligentUiNativePreview.supports(artifact([
+          {'id': 'root', 'type': 'Stack', 'children': ['title', 'stat']},
+          {'id': 'title', 'type': 'Text', 'props': {'text': 'Title'}},
+          {'id': 'stat', 'type': 'Stat', 'props': {'label': 'Users', 'value': '42'}},
+        ], 'root')),
+        isTrue,
+      );
+    });
+
+    test('rejects charts and unsupported nodes', () {
+      expect(
+        IntelligentUiNativePreview.supports(artifact([
+          {'id': 'root', 'type': 'Chart', 'props': {'kind': 'bar'}},
+        ], 'root')),
+        isFalse,
       );
     });
   });
