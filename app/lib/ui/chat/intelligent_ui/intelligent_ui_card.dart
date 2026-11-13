@@ -636,13 +636,26 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
     if (nativePreview != null) {
       if (widget.immersive) {
+        final displayTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
         return Semantics(
           container: true,
           label: semanticTitle,
-          child: _ImmersiveCard(
-            title: title,
-            onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
-            child: nativePreview,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Card(
+              elevation: 0,
+              margin: EdgeInsets.zero,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              shape: RoundedSuperellipseBorder(borderRadius: AppShape.radiusLg),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: _ImmersiveCard(
+                  title: displayTitle,
+                  onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
+                  child: nativePreview,
+                ),
+              ),
+            ),
           ),
         );
       }
