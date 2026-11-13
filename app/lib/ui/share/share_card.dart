@@ -889,6 +889,10 @@ class ShareIntelligentUiCardView extends StatelessWidget {
     final native = artifact != null && artifact.kind == IntelligentUiKind.declarative
         ? IntelligentUiNativePreview.tryBuild(context, artifact)
         : null;
+    if (native != null && artifact != null) {
+      // Reuse the exact chat card: native title, padding and typography.
+      return IntelligentUiCard(artifact: artifact, readOnly: true, immersive: true);
+    }
     final body =
         native ??
         ((card.artifact != null || card.widget != null)
