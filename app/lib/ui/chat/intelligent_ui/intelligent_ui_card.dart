@@ -630,28 +630,24 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final title = widget.artifact.title?.trim();
+    final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
     final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
     if (nativePreview != null) {
-      final body = Padding(padding: const EdgeInsets.fromLTRB(8, 0, 8, 8), child: nativePreview);
       if (widget.immersive) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            shape: RoundedSuperellipseBorder(borderRadius: AppShape.radiusLg),
-            child: body,
+        return Semantics(
+          container: true,
+          label: semanticTitle,
+          child: _ImmersiveCard(
+            title: title,
+            onFullscreen: widget.allowFullscreen ? _openFullscreen : null,
+            child: nativePreview,
           ),
         );
       }
-      return ChatCard(
-        icon: AppIcons.generating,
-        title: widget.artifact.title ?? context.l10n.chatIntelligentUiTitle,
-        children: [body],
-      );
+      return ChatCard(icon: AppIcons.generating, title: semanticTitle, children: [nativePreview]);
     }
-    final l10n = context.l10n;
     final child = _gone
         ? _Unavailable(
             message: l10n.chatIntelligentUiUnavailable,
@@ -673,7 +669,6 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
               gestureRecognizers: {Factory<LongPressGestureRecognizer>(LongPressGestureRecognizer.new)},
             ),
           );
-    final title = widget.artifact.title?.trim();
     final cardBody = Padding(
       padding: EdgeInsets.fromLTRB(0, 0, 0, widget.immersive ? 0 : 8),
       child: AnimatedSize(
@@ -683,7 +678,6 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         child: child,
       ),
     );
-    final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
     if (widget.immersive && widget.artifact.kind == IntelligentUiKind.widget) {
       return Semantics(
         container: true,

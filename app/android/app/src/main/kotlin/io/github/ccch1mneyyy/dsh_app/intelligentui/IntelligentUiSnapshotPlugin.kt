@@ -108,7 +108,11 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
     ) {
         private val done = AtomicBoolean(false)
         private val measured = AtomicBoolean(false)
-        private val web = WebView(activity)
+        private val web = WebView(activity).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            scrollBarStyle = WebView.SCROLLBARS_INSIDE_OVERLAY
+        }
         private var holder: FrameLayout? = null
         private var failure: String? = null
         private val timeout = Runnable {
