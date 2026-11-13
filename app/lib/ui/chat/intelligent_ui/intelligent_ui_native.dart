@@ -40,7 +40,9 @@ class IntelligentUiNativePreview {
     if (!supports(artifact)) return null;
     final nodes = _nodes(artifact.definition)!;
     final root = artifact.definition['root'] as String;
-    return _buildNode(context, root, nodes, 0);
+    final content = _buildNode(context, root, nodes, 0);
+    if (content == null) return null;
+    return Padding(padding: const EdgeInsets.fromLTRB(16, 2, 16, 12), child: content);
   }
 
   static Map<String, Map<String, Object?>>? _nodes(Map<String, Object?> definition) {
