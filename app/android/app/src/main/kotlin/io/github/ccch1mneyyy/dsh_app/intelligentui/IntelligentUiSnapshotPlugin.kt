@@ -238,24 +238,16 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
             val width = source.width
             val height = source.height
             if (width <= 0 || height <= 0) return source
-            val background = source.getPixel(0, 0)
-            val bgAlpha = (background ushr 24) and 0xFF
-            val bgRed = (background ushr 16) and 0xFF
-            val bgGreen = (background ushr 8) and 0xFF
-            val bgBlue = background and 0xFF
-            val whiteBackground = bgAlpha > 8 && bgRed >= 248 && bgGreen >= 248 && bgBlue >= 248
             val row = IntArray(width)
             var bottom = height - 1
+            // Snapshot pages draw on a transparent canvas. Only fully
+            // transparent rows are padding; an opaque card (even a white one)
+            // must never be mistaken for blank space.
             while (bottom >= 0) {
                 source.getPixels(row, 0, width, 0, bottom, width, 1)
                 var blank = true
                 for (pixel in row) {
-                    val alpha = (pixel ushr 24) and 0xFF
-                    if (alpha <= 8) continue
-                    val red = (pixel ushr 16) and 0xFF
-                    val green = (pixel ushr 8) and 0xFF
-                    val blue = pixel and 0xFF
-                    if (!whiteBackground || red < 248 || green < 248 || blue < 248) {
+                    if (((pixel ushr 24) and 0xFF) > 8) {
                         blank = false
                         break
                     }
