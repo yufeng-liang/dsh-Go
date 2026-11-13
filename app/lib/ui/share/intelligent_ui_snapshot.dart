@@ -19,6 +19,14 @@ String buildIntelligentUiSnapshotHtml({
   required bool dark,
   required String locale,
 }) {
+  final definition = artifact['definition'];
+  if (artifact['kind'] == 'widget' && definition is Map) {
+    final html = definition['html'];
+    final css = definition['css'];
+    if (html is String && html.isNotEmpty) {
+      return _buildWidgetSnapshotHtml(html: html, css: css is String ? css : '', dark: dark);
+    }
+  }
   final rawPolicy = artifact['policy'];
   final policy = rawPolicy is Map ? rawPolicy.map((key, value) => MapEntry('$key', value)) : const <String, Object?>{};
   final base = buildIntelligentUiHtml(rendererCode: rendererCode, token: 'snapshot', policy: policy);
@@ -59,6 +67,45 @@ window.__diuiSetArtifact($data);
   final end = base.lastIndexOf('</body>');
   if (end < 0) return '$base$setup';
   return '${base.substring(0, end)}$setup${base.substring(end)}';
+}
+
+String _buildWidgetSnapshotHtml({
+  required String html,
+  required String css,
+  required bool dark,
+}) {
+  final bg = dark ? '#151517' : '#ffffff';
+  final surface = dark ? '#232324' : '#f5f6f7';
+  final text = dark ? '#f9fafb' : '#0f1115';
+  final muted = dark ? '#adb2b8' : '#81858c';
+  final border = dark ? '#ffffff1f' : '#0000001a';
+  final accent = dark ? '#7aaaff' : '#4176e6';
+  final accentText = dark ? '#151517' : '#ffffff';
+  final safeCss = css.replaceAll(RegExp(r'</style', caseSensitive: false), r'<\/style');
+  return '''<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--ui-bg:$bg;--ui-surface:$surface;--ui-text:$text;--ui-muted:$muted;--ui-border:$border;--ui-accent:$accent;--ui-accent-text:$accentText;--ui-radius:8px;--ui-font:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;--ui-mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:${dark ? 'dark' : 'light'}}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:transparent!important;color:var(--ui-text);font:14px/1.5 var(--ui-font);-webkit-font-smoothing:antialiased;overflow:hidden!important}
+#ui-root{padding:0!important;background:transparent!important;overflow:hidden!important}
+h1,h2,h3,h4{margin:0 0 .5em;line-height:1.25}h3{font-size:16px}p{margin:0 0 .75em}a{color:var(--ui-accent)}
+button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer;border:1px solid var(--ui-border);background:var(--ui-surface);border-radius:var(--ui-radius);padding:6px 12px}
+button.primary,button[data-variant=primary]{background:var(--ui-accent);border-color:var(--ui-accent);color:var(--ui-accent-text)}
+input,select,textarea{border:1px solid var(--ui-border);background:var(--ui-bg);border-radius:var(--ui-radius);padding:6px 8px;max-width:100%}
+code,pre{font-family:var(--ui-mono)}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--ui-border);padding:6px 8px;text-align:left}
+svg,canvas,img,video{max-width:100%}
+.ui-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.ui-card{border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:var(--ui-surface);padding:12px}
+.ui-muted{color:var(--ui-muted)}
+$safeCss
+</style></head><body><div id="ui-root">$html</div>
+<script>
+(function(){
+  function send(){if(window.Dsh&&window.Dsh.postMessage){window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));}}
+  requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(send,250);});});
+})();
+</script></body></html>''';
 }
 
 /// Lets grid/flex children of a widget shrink to the card width.
