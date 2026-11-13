@@ -75,6 +75,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
             "capture" -> {
                 val html = call.argument<String>("html")
                 val width = call.argument<Int>("width") ?: 0
+                val remoteMedia = call.argument<Boolean>("remoteMedia") ?: false
                 if (html.isNullOrBlank() || width <= 0) {
                     result.error("bad_args", "html and width are required", null)
                     return
@@ -87,7 +88,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 }
                 main.post {
                     try {
-                        val job = Capture(activity, html, width, result)
+                        val job = Capture(activity, html, width, remoteMedia, result)
                         jobs.add(job)
                         job.start()
                     } catch (error: Throwable) {
@@ -104,6 +105,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private val activity: Activity,
         private val html: String,
         private val logicalWidth: Int,
+        private val remoteMedia: Boolean,
         private val result: MethodChannel.Result,
     ) {
         private val done = AtomicBoolean(false)
@@ -140,7 +142,9 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                 domStorageEnabled = false
                 allowFileAccess = false
                 allowContentAccess = false
-                blockNetworkLoads = true
+                // Only a card whose policy names remote media origins opens the
+                // network; the HTML's own CSP still limits what can be fetched.
+                blockNetworkLoads = !remoteMedia
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 javaScriptCanOpenWindowsAutomatically = false
                 mediaPlaybackRequiresUserGesture = true
@@ -157,7 +161,7 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
                     // past the message budget.
                     main.postDelayed({
                         if (!done.get()) measureAndDraw(pxWidth, density)
-                    }, PAGE_SETTLE_MS)
+                    }, if (remoteMedia) MEDIA_SETTLE_MS else PAGE_SETTLE_MS)
                 }
                 override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                     finish(null)
@@ -298,6 +302,9 @@ class IntelligentUiSnapshotPlugin : FlutterPlugin, ActivityAware, MethodChannel.
         private const val TIMEOUT_MS = 20000L
         private const val DRAW_DELAY_MS = 200L
         private const val PAGE_SETTLE_MS = 900L
+
+        /** Fallback for cards with remote media: give images time to arrive. */
+        private const val MEDIA_SETTLE_MS = 5000L
         private const val INITIAL_HEIGHT_PX = 1600
         private const val MAX_PX_HEIGHT = 8000
     }

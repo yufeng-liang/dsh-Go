@@ -8,8 +8,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../state/intelligent_ui.dart';
-import '../chat/intelligent_ui/intelligent_ui_card.dart' show buildIntelligentUiHtml;
+import '../chat/intelligent_ui/intelligent_ui_card.dart'
+    show buildIntelligentUiHtml, intelligentUiImageOrigins, intelligentUiMediaOrigins;
 import 'share_intelligent_ui.dart';
+
+/// How long the bootstrap waits for `<img>` elements before capturing.
+///
+/// Remote media only arrives when the snapshot WebView is allowed to use the
+/// network (see [snapshotAllowsRemoteMedia]); a card without `<img>` settles at
+/// once, so this only costs time on media cards.
+const _mediaWaitMs = 3000;
 
 /// Builds the same bootstrap the live card uses, with the artifact applied
 /// before the page reports that it is ready to be captured.
@@ -51,15 +59,29 @@ window.__diuiSetArtifact($data);
       window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));
     }
   }
+  function imagesLoading() {
+    var list = document.images, left = 0;
+    for (var i = 0; i < list.length; i++) { if (!list[i].complete) left++; }
+    return left;
+  }
+  // Remote images arrive after the renderer mounts; wait for them so a media
+  // card is not captured half-empty. Capped so a broken host cannot stall it.
+  function afterMedia(then) {
+    var waited = Date.now();
+    (function poll() {
+      if (imagesLoading() === 0 || Date.now() - waited > $_mediaWaitMs) { setTimeout(then, 250); return; }
+      setTimeout(poll, 100);
+    })();
+  }
   function check() {
     var ui = document.getElementById('ui');
     var hasContent = !!ui && (ui.children.length > 0 || (ui.textContent || '').trim().length > 0);
     if (hasContent) {
-      setTimeout(send, 250);
+      afterMedia(send);
       return;
     }
     if (Date.now() - started > 5000) {
-      send();
+      afterMedia(send);
       return;
     }
     setTimeout(check, 100);
@@ -76,18 +98,24 @@ window.__diuiSetArtifact($data);
   return '${base.substring(0, end)}$setup${base.substring(end)}';
 }
 
+/// Whether a snapshot may reach the network at all.
+///
+/// The capture WebView blocks network loads unless this is true. The card's own
+/// policy decides: `allowMedia`/`mediaOrigins` for images, video and audio, and
+/// `mapTiles` for map imagery. The CSP built from the same policy still decides
+/// which origins are reachable once the network is on.
+bool snapshotAllowsRemoteMedia(Map<String, Object?> policy) =>
+    intelligentUiImageOrigins(policy).isNotEmpty || intelligentUiMediaOrigins(policy).isNotEmpty;
+
 String _buildWidgetSnapshotHtml({
   required String html,
   required String css,
   required bool dark,
   required Map<String, Object?> policy,
 }) {
-  final allowMedia = policy['allowMedia'] == true;
-  final origins = (policy['mediaOrigins'] is List)
-      ? (policy['mediaOrigins'] as List).whereType<String>().where((origin) => Uri.tryParse(origin)?.hasScheme == true).toList()
-      : const <String>[];
-  final mediaSrc = !allowMedia ? "'none'" : (origins.isEmpty ? 'https:' : origins.join(' '));
-  final imgSrc = allowMedia ? 'data: blob: $mediaSrc' : 'data: blob:';
+  final imgSrc = <String>{'data:', 'blob:', ...intelligentUiImageOrigins(policy)}.join(' ');
+  final media = intelligentUiMediaOrigins(policy);
+  final mediaSrc = media.isEmpty ? "'none'" : media.join(' ');
   final bg = dark ? '#151517' : '#ffffff';
   final surface = dark ? '#232324' : '#f5f6f7';
   final text = dark ? '#f9fafb' : '#0f1115';
@@ -117,8 +145,14 @@ $safeCss
 </style></head><body><div id="ui-root">$html</div>
 <script>
 (function(){
+  var started = Date.now();
   function send(){if(window.Dsh&&window.Dsh.postMessage){window.Dsh.postMessage(JSON.stringify({type:'captureReady'}));}}
-  requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(send,250);});});
+  function imagesLoading(){var list=document.images,left=0;for(var i=0;i<list.length;i++){if(!list[i].complete)left++;}return left;}
+  function wait(){
+    if(imagesLoading()>0&&Date.now()-started<$_mediaWaitMs){setTimeout(wait,100);return;}
+    setTimeout(send,250);
+  }
+  requestAnimationFrame(function(){requestAnimationFrame(wait);});
 })();
 </script></body></html>''';
 }
@@ -194,6 +228,7 @@ class IntelligentUiSnapshot {
         definition = <String, Object?>{...definition, 'initialHeight': 1600};
       }
       final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
+      final resolvedPolicy = Map<String, Object?>.from(policy);
       final artifact = IntelligentUiArtifact(
         kind: IntelligentUiKind.values.firstWhere(
           (value) => value.name == kind,
@@ -206,7 +241,7 @@ class IntelligentUiSnapshot {
         definition: Map<String, Object?>.from(definition),
         seq: 0,
         title: card.title,
-        policy: Map<String, Object?>.from(policy),
+        policy: resolvedPolicy,
       );
       final html = buildIntelligentUiSnapshotHtml(
         rendererCode: rendererCode,
@@ -214,7 +249,13 @@ class IntelligentUiSnapshot {
         dark: dark,
         locale: locale,
       );
-      return await _channel.invokeMethod<Uint8List>('capture', {'html': html, 'width': width.round()});
+      return await _channel.invokeMethod<Uint8List>('capture', {
+        'html': html,
+        'width': width.round(),
+        // Off by default on the platform side: only a policy that names remote
+        // media origins opens the WebView's network.
+        'remoteMedia': snapshotAllowsRemoteMedia(resolvedPolicy),
+      });
     } on MissingPluginException catch (error) {
       debugPrint('IntelligentUiSnapshot missing plugin: $error');
       return null;

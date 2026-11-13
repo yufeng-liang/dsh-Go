@@ -22,7 +22,7 @@
 ## 分享
 
 - 分享卡片是 Flutter `RepaintBoundary` 截图，WebView 里的平台视图不会被画进截图。Android 上改为用离屏 WebView 把完整智能 UI artifact（`ui_render`/`ui_render_widget`/`ui_compose`）绘成 PNG，再放进分享预览和分享图；同一份 renderer 与组件树/HTML/CSS，字体、字号、粗细和聊天卡片一致。其他平台或截图失败时回退为原生 Markdown 卡片壳。
-- 离屏 WebView 与聊天卡片使用同一套安全设置：不执行远端代码、不联网、不能发消息；交互和图表里的动态数据不会出现在分享图里。
+- 离屏 WebView 与聊天卡片使用同一套安全设置：不执行远端代码、不能发消息；网络默认关闭，只有 policy 明确允许远程媒体（`allowMedia`/`mediaOrigins`）或地图瓦片（`mapTiles`）时才按同一份 policy 打开，截图前等 `<img>` 加载完（最多 3 秒）。交互和图表里的动态数据不会出现在分享图里。
 - patch 后的卡片按原始 `originSeq` 归到首次展示它的回合，并按最新版本渲染，因此分享卡片和聊天里看到的内容一致。
 - 分享链接（`.dshgo` 回放）把回复附带的卡片以 `ui` 数组写进分享文件。声明式卡片用原生卡片壳按「标题 + Markdown」渲染；`ui_render_widget` 卡片额外带上受限的 HTML/CSS，在回放页的受限 WebView 里只读还原字体、字号和粗细，不执行脚本、不联网、不能发消息。带完整 artifact 的卡片也会保存组件树，在回放页用同一套受限 WebView 渲染完整卡片。
 
