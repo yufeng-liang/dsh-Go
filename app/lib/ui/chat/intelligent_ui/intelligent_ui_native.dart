@@ -19,11 +19,28 @@ class IntelligentUiNativePreview {
     final nodes = _nodes(artifact.definition);
     final root = artifact.definition['root'];
     if (nodes == null || root is! String) return null;
-    final node = nodes[root];
-    if (node == null || node['type'] != 'Card') return null;
-    final title = _props(node)['title'];
-    if (title is! String || title.trim().isEmpty) return null;
-    return title.trim();
+    final seen = <String>{};
+    String? visit(String id, int depth) {
+      if (depth > 8 || !seen.add(id)) return null;
+      final node = nodes[id];
+      if (node == null) return null;
+      if (node['type'] == 'Card') {
+        final title = _props(node)['title'];
+        if (title is String && title.trim().isNotEmpty) return title.trim();
+      }
+      final children = node['children'];
+      if (children is List) {
+        for (final child in children) {
+          if (child is String) {
+            final found = visit(child, depth + 1);
+            if (found != null) return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    return visit(root, 0);
   }
 
   static bool supports(IntelligentUiArtifact artifact) {
