@@ -10,6 +10,7 @@ env:
   FLUTTER_VERSION: 3.47.7
   NODE_VERSION: 24.22.1
   GRADLE_VERSION: 9.3.1
+  DSH_MAVEN_MIRRORS: '0'
 
 jobs:
   build:
