@@ -882,6 +882,37 @@ class ShareIntelligentUiCardView extends StatelessWidget {
       return IntelligentUiCard(artifact: _shareArtifact(card), readOnly: true);
     }
     final bodyWidth = width == null ? 336.0 : width! - 16;
+    if (card.artifact == null && card.widget != null) {
+      final fullWidth = width ?? MediaQuery.sizeOf(context).width;
+      final title = card.title ?? appL10n.chatIntelligentUiTitle;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+            child: Row(
+              children: [
+                Icon(AppIcons.generating, size: 14, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _SnapshotIntelligentUi(card: card, width: fullWidth),
+        ],
+      );
+    }
     final artifact = (card.artifact != null) ? _shareArtifact(card) : null;
     // Declarative cards are pure Flutter widgets in the native fast path. Use
     // the same renderer here so the share preview and the share image keep the
