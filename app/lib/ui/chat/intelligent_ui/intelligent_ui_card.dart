@@ -457,14 +457,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   void _postArtifact() {
     final controller = _controller;
     if (controller == null) return;
-    // 与 remote 一致：即使插件策略允许，卡片也不给它网络、CDN 或外链权限。
+    // 与 remote 一致：不给 CDN 外链权限；媒体与打开链接按插件 policy 放行。
     final artifact = _renderArtifact(widget.artifact);
     final rawPolicy = artifact['policy'];
     final policy = <String, Object?>{
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
       'allowNetwork': false,
       'cdn': const <String>[],
-      'openLinkOrigins': const <String>[],
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
@@ -552,7 +551,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       final List<Object?> value => value.whereType<String>().toList(growable: false),
       _ => const <String>[],
     };
-    if (allowed.isEmpty || !allowed.any((origin) => origin == uri.origin)) return;
+    // 与渲染器 mediaOrigins 语义一致：空列表 = 放行任意 https 来源。
+    if (allowed.isNotEmpty && !allowed.any((origin) => origin == uri.origin)) return;
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
