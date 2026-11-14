@@ -218,14 +218,20 @@ List<ChatRow> deriveRows({
   bool foldTurns = false,
   List<TurnArtifacts> artifacts = const [],
   List<IntelligentUiArtifact> intelligentUis = const [],
+  String hostId = '',
+  String sessionId = '',
 }) {
   debugDeriveRowsCount++;
   final rows = <ChatRow>[];
   final attached = <String>{};
   final portableUis = <IntelligentUiArtifact>[];
+  // 投影器已经出过卡的调用,portable 适配器不再出第二张:两边的卡片都以
+  // 调用 id 作为 uiId,所以这一层去重是有效的。
+  final projectedCalls = {for (final ui in intelligentUis) ui.uiId};
   for (final item in items) {
     if (item is! ToolChatItem) continue;
-    final ui = PortableUiAdapter.fromTool(item);
+    if (projectedCalls.contains(item.callId)) continue;
+    final ui = PortableUiAdapter.fromTool(item, hostId: hostId, sessionId: sessionId);
     if (ui != null) portableUis.add(ui);
   }
   final uiByCall = <String, List<IntelligentUiArtifact>>{};

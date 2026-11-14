@@ -494,6 +494,159 @@ void main() {
       expect(artifact, isNotNull);
       expect(artifact!.definition['html'], contains('fallback'));
     });
+
+    /// 与上面的 item 同构，只把工具名参数化：用于验证 ui_* 工具名被跳过。
+    ToolChatItem named(String name, Object? meta) => ToolChatItem(
+      callId: 'call-portable',
+      name: name,
+      arguments: '{}',
+      status: ToolStatus.succeeded,
+      seq: 9,
+      resultParts: const [],
+      meta: meta,
+    );
+
+    test('escapes quotes in a media url so it cannot break out of src', () {
+      // media 只从 dsh-go/portable envelope 的 kind:'media' 出卡，meta 顶层 kind 不参与识别。
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'dsh-go/portable': {'kind': 'media', 'url': 'https://x/"onerror=alert(1)'},
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      // 不转义时 html 会变成 src="https://x/"onerror=…，属性提前闭合、多出一个事件处理器。
+      expect(html, contains('&quot;'));
+      expect(html, isNot(contains('"onerror')));
+    });
+
+    test('rejects a media url that is not https', () {
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'media', 'url': 'http://x/a.png'}}),
+        ),
+        isNull,
+      );
+      // 对照组：同一形状的 https 地址能出卡，说明拒绝原因是协议而不是 media 映射本身。
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'media', 'url': 'https://x/a.png'}}),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('rejects every script spelling in a raw html fragment', () {
+      for (final html in <String>[
+        '<script/>alert(1)</script>', // 自闭合变体
+        '<p>x</p><script', // 没有闭合标签，直接到字符串末尾
+        '<ScRiPt src=//e>x</ScRiPt>', // 大小写混淆
+      ]) {
+        expect(PortableUiAdapter.fromTool(item({'html': html})), isNull, reason: html);
+      }
+      // 对照组：同样形状的干净 html 正常出卡。
+      expect(PortableUiAdapter.fromTool(item({'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('renders a markdown-only card without list markup', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'markdown': '## 标题\n\n**粗** 与 *斜* 和 `code` 以及 [链](https://e.com)\n\n```\ndart\n```',
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('<h2>标题</h2>'));
+      expect(html, contains('<strong>粗</strong>'));
+      expect(html, contains('<em>斜</em>'));
+      expect(html, contains('<code>code</code>'));
+      expect(html, contains('href="https://e.com"'));
+      expect(html, contains('<pre><code>dart</code></pre>'));
+      // 输入里没有任何列表行：出现 <ul 就说明 markdown 被当成 items 分支渲染了。
+      expect(html, isNot(contains('<ul')));
+    });
+
+    test('drops html past the 60000 character cap and keeps the boundary', () {
+      final over = '<p>${'a' * 59994}</p>'; // 60001 字（3+59994+4），超一字符
+      expect(over.length, 60001);
+      expect(PortableUiAdapter.fromTool(item({'html': over})), isNull);
+
+      final edge = '<p>${'a' * 59993}</p>'; // 正好 60000 字（3+59993+4）
+      expect(edge.length, 60000);
+      final artifact = PortableUiAdapter.fromTool(item({'html': edge}), hostId: 'h', sessionId: 's');
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], edge);
+    });
+
+    test('skips metas owned by the ui_* tools', () {
+      for (final name in <String>['ui_render', 'ui_render_widget', 'ui_compose']) {
+        expect(PortableUiAdapter.fromTool(named(name, {'html': '<p>x</p>'})), isNull, reason: name);
+      }
+      // 对照组：换成普通工具名，同一份 meta 能出卡。
+      expect(PortableUiAdapter.fromTool(named('render_data', {'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('does not fall back past an unknown portable envelope', () {
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'unknown'}, 'html': '<p>x</p>'}),
+        ),
+        isNull,
+      );
+      // 对照组：拿掉 envelope 后同一份 html 能出卡，说明是 envelope 终止了回落。
+      expect(PortableUiAdapter.fromTool(item({'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('falls back to an empty policy when the policy value is not a map', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'html': '<p>x</p>', 'policy': 'nope'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], '<p>x</p>');
+      // 非法类型被丢掉后落到空 Map，而不是把字符串或整个 meta 当 policy。
+      expect(artifact.policy, isEmpty);
+
+      final kept = PortableUiAdapter.fromTool(
+        item({'html': '<p>x</p>', 'policy': {'allowMedia': true}}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      // 对照组：合法 policy 原样带出。
+      expect(kept, isNotNull);
+      expect(kept!.policy, {'allowMedia': true});
+    });
+
+    test('renders mixed items and a flat trend metric', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'items': [
+            '纯文本',
+            {'label': 'B', 'value': '2'},
+          ],
+          'metrics': [
+            {'label': 'M', 'value': '1', 'trend': 'flat'},
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('<li>纯文本</li>'));
+      expect(html, contains('<strong>B</strong> 2'));
+      expect(html, contains('dsh-portable-metrics'));
+      expect(html, contains('dsh-portable-trend-flat'));
+      expect(html, isNot(contains('dsh-portable-trend-up')));
+    });
   });
 
   group('IntelligentUiNativePreview', () {
