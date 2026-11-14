@@ -126,7 +126,7 @@ String _buildWidgetSnapshotHtml({
   final safeCss = css.replaceAll(RegExp(r'</style', caseSensitive: false), r'<\/style');
   return '''<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src $imgSrc; media-src $mediaSrc; style-src 'unsafe-inline'; font-src data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src $imgSrc; media-src $mediaSrc; style-src 'unsafe-inline'; font-src data:; connect-src https://api.bilibili.com;">
 <style>
 :root{--ui-bg:$bg;--ui-surface:$surface;--ui-text:$text;--ui-muted:$muted;--ui-border:$border;--ui-accent:$accent;--ui-accent-text:$accentText;--ui-radius:8px;--ui-font:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;--ui-mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:${dark ? 'dark' : 'light'}}
 *,*::before,*::after{box-sizing:border-box}
