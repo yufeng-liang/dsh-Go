@@ -85,15 +85,70 @@ class IntelligentUiArtifact {
 /// 对应上游 `src/portable/artifacts.js` 的 `projectNativeUiEvents`。每次都
 /// 从完整日志重算，因此历史分页、重连快照和实时事件走同一条路径，不需要
 /// 在客户端保存脆弱的增量状态。
-/// 通用 `dsh-go/portable` 工具结果适配器。
+/// 通用聊天 UI 适配器：把工具结果里的 presentationMeta 转成受限的 widget 卡。
 ///
-/// 第三方插件不必依赖 intelligent-ui 的 renderer：只要在
-/// `presentationMeta['dsh-go/portable']` 里提供可序列化的 HTML/结构化字段，
-/// App 就能用现有的智能 UI 卡片壳渲染。
+/// 第三方插件不必依赖 intelligent-ui 的 renderer：只要在 presentationMeta 的
+/// dsh-go/portable 里给出可序列化的 HTML/结构化字段，或者在 meta 上直接挂
+/// html / widget.html / fragment / card，App 就能用现有的智能 UI 卡片壳渲染。
+/// 识别顺序见 docs/plugins/portable-ui.md：优先级 1–3（dsh-go/view、
+/// dsh-go/media、ui）由别的适配器负责，这里直接让位。
 class PortableUiAdapter {
   const PortableUiAdapter._();
 
+  /// 单张卡片的 HTML 上限：超了就整张放弃，不出半张卡。
+  static const _maxHtmlChars = 60000;
+
+  /// structured 表格的截断口径。
+  static const _maxTableRows = 50;
+  static const _maxTableColumns = 12;
+
+  /// 卡片初始高度：真正的排版交给 WebView，先给最小值再由渲染器量高。
+  static const _initialHeight = 48;
+
+  /// 优先级 1–3 的 meta 键：任何一个非 null 都不该由 portable 出卡。
+  static const _reservedKeys = ['dsh-go/view', 'dsh-go/media', 'ui'];
+
+  /// 结构化字段共用的样式（.dsh-portable 一族）。
+  static const _css =
+      '.dsh-portable{font:13px sans-serif;line-height:1.45;padding:8px;word-break:break-word}'
+      '.dsh-portable h2{font-size:15px;margin:0 0 8px}'
+      '.dsh-portable h3{font-size:13px;margin:12px 0 6px}'
+      '.dsh-portable p{margin:0 0 6px}'
+      '.dsh-portable strong{font-weight:600}'
+      '.dsh-portable-metrics{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}'
+      '.dsh-portable-metric{display:flex;flex-direction:column;gap:2px;min-width:88px;padding:8px 10px;'
+      'border:1px solid rgba(127,127,127,.32);border-radius:8px}'
+      '.dsh-portable-metric-label{font-size:12px;opacity:.72}'
+      '.dsh-portable-metric-value{font-size:18px;font-weight:600}'
+      '.dsh-portable-metric-delta{font-size:12px}'
+      '.dsh-portable-trend-up .dsh-portable-metric-delta{color:#2e7d32}'
+      '.dsh-portable-trend-down .dsh-portable-metric-delta{color:#c62828}'
+      '.dsh-portable-trend-flat .dsh-portable-metric-delta{color:#757575}'
+      '.dsh-portable-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}'
+      '.dsh-portable-table th,.dsh-portable-table td{border:1px solid rgba(127,127,127,.32);padding:4px 6px;'
+      'text-align:left;vertical-align:top}'
+      '.dsh-portable-table th{font-weight:600;background:rgba(127,127,127,.12)}'
+      '.dsh-portable-items{margin:8px 0;padding-left:18px}'
+      '.dsh-portable-items li{margin:2px 0}'
+      '.dsh-portable pre{background:rgba(127,127,127,.12);padding:8px;border-radius:6px;overflow:auto}'
+      '.dsh-portable code{font-family:monospace}'
+      '.dsh-portable a{color:#1a73e8}';
+
+  /// 正文转义只处理会破坏文本节点的字符，斜杠保持原样。
+  static const _escape = HtmlEscape(HtmlEscapeMode.element);
+
+  /// 属性值转义额外处理双引号，链接不会截断 href。
+  static const _attrEscape = HtmlEscape(HtmlEscapeMode.attribute);
+
   static final _script = RegExp(r'<script[\s>]', caseSensitive: false);
+  static final _codeSpan = RegExp(r'\x60([^\x60]+)\x60');
+  static final _link = RegExp(r'\[([^\]]+)\]\((https://[^\s()]+)\)');
+  static final _bold = RegExp(r'\*\*([^*]+)\*\*');
+  static final _italic = RegExp(r'\*([^*\n]+)\*');
+  static final _heading = RegExp(r'^(#{1,3})\s+(.+)$');
+  static final _bullet = RegExp(r'^[-*]\s+(.+)$');
+  static final _ordered = RegExp(r'^\d+\.\s+(.+)$');
+  static const _fence = '\x60\x60\x60';
 
   static IntelligentUiArtifact? fromTool(
     ToolChatItem item, {
@@ -101,23 +156,74 @@ class PortableUiAdapter {
     String sessionId = '',
   }) {
     final meta = item.meta;
-    if (meta is! Map) return null;
-    final raw = meta['dsh-go/portable'];
-    if (raw is! Map) return null;
-    final map = raw.cast<String, Object?>();
     final seq = item.seq;
-    if (seq == null) return null;
-    final kind = IntelligentUiProjector._asString(map['kind']);
-    final title = IntelligentUiProjector._asString(map['title']);
-    final policy = IntelligentUiProjector._asMap(map['policy']) ?? const <String, Object?>{};
-    final definition = switch (kind) {
-      'html' => _htmlDefinition(map),
-      'structured' => _structuredDefinition(map),
-      'media' => _mediaDefinition(map),
-      _ => null,
-    };
-    if (definition == null) return null;
-    if (!IntelligentUiProjector._validWidget(definition)) return null;
+    if (meta is! Map || seq == null) return null;
+    // intelligent-ui 自己的工具由投影器出卡；再走 portable 会在同一行出两张。
+    if (intelligentUiToolNames.contains(item.name)) return null;
+    for (final key in _reservedKeys) {
+      if (meta[key] != null) return null;
+    }
+
+    // 优先级 4：dsh-go/portable envelope。出现即终局：kind 不认识也不往下找。
+    if (meta['dsh-go/portable'] is Map) {
+      final map = IntelligentUiProjector._asMap(meta['dsh-go/portable'])!;
+      return _artifact(
+        item,
+        seq,
+        hostId,
+        sessionId,
+        definition: switch (IntelligentUiProjector._asString(map['kind'])) {
+          'html' => _htmlDefinition(map),
+          'structured' => _structuredDefinition(map),
+          'media' => _mediaDefinition(map),
+          _ => null,
+        },
+        title: IntelligentUiProjector._asString(map['title']),
+        policy: IntelligentUiProjector._asMap(map['policy']) ?? const <String, Object?>{},
+      );
+    }
+
+    final policy = IntelligentUiProjector._asMap(meta['policy']) ?? const <String, Object?>{};
+
+    // 优先级 5：原始 html / widget.html / fragment，取第一个可用的。
+    final fragment = _fragmentDefinition(meta);
+    if (fragment != null) {
+      return _artifact(
+        item,
+        seq,
+        hostId,
+        sessionId,
+        definition: fragment.$1,
+        title: fragment.$2,
+        policy: policy,
+      );
+    }
+
+    // 优先级 6：结构化卡片。card 是数据源本身，也可以整个 meta 就是一张卡。
+    final card = _cardDefinition(meta);
+    if (card == null) return null;
+    return _artifact(
+      item,
+      seq,
+      hostId,
+      sessionId,
+      definition: card.$1,
+      title: card.$2,
+      policy: policy,
+    );
+  }
+
+  /// 统一产物：widget 卡，uiId 用调用 id，definition 必须过 widget 校验。
+  static IntelligentUiArtifact? _artifact(
+    ToolChatItem item,
+    int seq,
+    String hostId,
+    String sessionId, {
+    required Map<String, Object?>? definition,
+    required String? title,
+    required Map<String, Object?> policy,
+  }) {
+    if (definition == null || !IntelligentUiProjector._validWidget(definition)) return null;
     return IntelligentUiArtifact(
       kind: IntelligentUiKind.widget,
       hostId: hostId,
@@ -132,46 +238,291 @@ class PortableUiAdapter {
     );
   }
 
-  static Map<String, Object?>? _htmlDefinition(Map<String, Object?> map) {
-    final html = IntelligentUiProjector._asString(map['html']);
-    if (html == null || html.isEmpty || _script.hasMatch(html)) return null;
-    final css = IntelligentUiProjector._asString(map['css']);
-    return {'html': html, 'css': css ?? '', 'initialHeight': 48};
+  static Map<String, Object?> _htmlCard(String html, {String? css}) => {
+    'html': html,
+    'css': css ?? '',
+    'initialHeight': _initialHeight,
+  };
+
+  /// 插件给的 HTML 片段：必须是非空字符串且不含 script 标签。
+  static String? _htmlOf(Object? value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return _script.hasMatch(value) ? null : value;
   }
 
-  static Map<String, Object?>? _structuredDefinition(Map<String, Object?> map) {
-    final fields = IntelligentUiProjector._asList(map['fields']);
-    final title = IntelligentUiProjector._asString(map['title']);
-    final buffer = StringBuffer();
-    if (title != null && title.isNotEmpty) {
-      buffer.write('<h2>${const HtmlEscape().convert(title)}</h2>');
-    }
-    for (final field in fields) {
-      final f = IntelligentUiProjector._asMap(field);
-      if (f == null) continue;
-      final label = IntelligentUiProjector._asString(f['label']) ?? '';
-      final value = IntelligentUiProjector._asString(f['value']) ?? '';
-      buffer
-        ..write('<p><strong>${const HtmlEscape().convert(label)}</strong> ')
-        ..write('${const HtmlEscape().convert(value)}</p>');
-    }
-    if (buffer.isEmpty) return null;
-    return {
-      'html': '<div class="dsh-portable">${buffer.toString()}</div>',
-      'css': '.dsh-portable{font:13px sans-serif;line-height:1.45;padding:8px}',
-      'initialHeight': 48,
-    };
+  static Map<String, Object?>? _htmlDefinition(Map<String, Object?> map) {
+    final html = _htmlOf(map['html']);
+    if (html == null) return null;
+    return _htmlCard(html, css: IntelligentUiProjector._asString(map['css']));
   }
 
   static Map<String, Object?>? _mediaDefinition(Map<String, Object?> map) {
     final url = IntelligentUiProjector._asString(map['url']);
-    if (url == null || url.isEmpty || !url.startsWith('https://')) return null;
-    final escaped = const HtmlEscape().convert(url);
-    return {
-      'html': '<img class="dsh-portable-media" src="$escaped" alt="">',
-      'css': '.dsh-portable-media{display:block;max-width:100%;height:auto;border-radius:8px}',
-      'initialHeight': 48,
-    };
+    if (url == null || !url.startsWith('https://')) return null;
+    final src = _text(url);
+    return _htmlCard(
+      '<img class="dsh-portable-media" src="$src" alt="">',
+      css: '.dsh-portable-media{display:block;max-width:100%;height:auto;border-radius:8px}',
+    );
+  }
+
+  /// 优先级 5：原始 html / widget.html / fragment，按顺序取第一个可用的；
+  /// 空串、非字符串、带 script 的候选跳过，继续往下找。
+  static (Map<String, Object?>, String?)? _fragmentDefinition(Map<Object?, Object?> meta) {
+    final title = IntelligentUiProjector._asString(meta['title']);
+    final html = _htmlOf(meta['html']);
+    if (html != null) return (_htmlCard(html), title);
+    if (meta['widget'] is Map) {
+      final widget = IntelligentUiProjector._asMap(meta['widget'])!;
+      final widgetHtml = _htmlOf(widget['html']);
+      if (widgetHtml != null) {
+        return (
+          _htmlCard(widgetHtml, css: IntelligentUiProjector._asString(widget['css'])),
+          IntelligentUiProjector._asString(widget['title']),
+        );
+      }
+    }
+    final fragment = _htmlOf(meta['fragment']);
+    if (fragment != null) return (_htmlCard(fragment), title);
+    return null;
+  }
+
+  /// 优先级 6：card 自带结构化数据；或 kind 标成 card，整个 meta 就是数据源。
+  static (Map<String, Object?>, String?)? _cardDefinition(Map<Object?, Object?> meta) {
+    final outerTitle = IntelligentUiProjector._asString(meta['title']);
+    if (meta['card'] is Map) {
+      final card = IntelligentUiProjector._asMap(meta['card'])!;
+      final definition = _structuredDefinition(card);
+      if (definition == null) return null;
+      return (definition, IntelligentUiProjector._asString(card['title']) ?? outerTitle);
+    }
+    if (meta['kind'] == 'card') {
+      final data = IntelligentUiProjector._asMap(meta)!;
+      final definition = _structuredDefinition(data);
+      if (definition == null) return null;
+      return (definition, IntelligentUiProjector._asString(data['title']) ?? outerTitle);
+    }
+    return null;
+  }
+
+  static Map<String, Object?>? _structuredDefinition(Map<String, Object?> data) {
+    final html = _structuredHtml(data);
+    return html == null ? null : _htmlCard(html, css: _css);
+  }
+
+  /// 结构化数据转 HTML：title / fields / metrics / tables / items / markdown。
+  /// 所有文本先转义再套标签，插件给的内容不会被当成标签解析。
+  static String? _structuredHtml(Map<String, Object?> data) {
+    final buffer = StringBuffer();
+    final title = IntelligentUiProjector._asString(data['title']);
+    if (title != null && title.isNotEmpty) buffer.write('<h2>${_text(title)}</h2>');
+
+    for (final field in IntelligentUiProjector._asList(data['fields'])) {
+      final map = IntelligentUiProjector._asMap(field);
+      if (map == null) continue;
+      final label = _cellText(map['label']) ?? '';
+      final value = _cellText(map['value']) ?? '';
+      if (label.isEmpty && value.isEmpty) continue;
+      buffer.write('<p><strong>${_text(label)}</strong> ${_text(value)}</p>');
+    }
+
+    final metrics = StringBuffer();
+    for (final metric in IntelligentUiProjector._asList(data['metrics'])) {
+      final map = IntelligentUiProjector._asMap(metric);
+      if (map == null) continue;
+      final label = _cellText(map['label']) ?? '';
+      final value = _cellText(map['value']) ?? '';
+      if (label.isEmpty && value.isEmpty) continue;
+      final delta = _cellText(map['delta']) ?? '';
+      final trend = _trend(map['trend']);
+      final className = trend == null ? 'dsh-portable-metric' : 'dsh-portable-metric dsh-portable-trend-$trend';
+      metrics
+        ..write('<div class="$className">')
+        ..write('<span class="dsh-portable-metric-label">${_text(label)}</span>')
+        ..write('<span class="dsh-portable-metric-value">${_text(value)}</span>');
+      if (delta.isNotEmpty) metrics.write('<span class="dsh-portable-metric-delta">${_text(delta)}</span>');
+      metrics.write('</div>');
+    }
+    if (metrics.isNotEmpty) buffer.write('<div class="dsh-portable-metrics">$metrics</div>');
+
+    for (final table in IntelligentUiProjector._asList(data['tables'])) {
+      final map = IntelligentUiProjector._asMap(table);
+      if (map == null) continue;
+      final columns = <String>[];
+      for (final column in IntelligentUiProjector._asList(map['columns'])) {
+        if (columns.length >= _maxTableColumns) break;
+        columns.add(_cellText(column) ?? '');
+      }
+      if (columns.isEmpty) continue;
+      final heading = IntelligentUiProjector._asString(map['title']);
+      if (heading != null && heading.isNotEmpty) buffer.write('<h3>${_text(heading)}</h3>');
+      buffer.write('<table class="dsh-portable-table"><thead><tr>');
+      for (final column in columns) {
+        buffer.write('<th>${_text(column)}</th>');
+      }
+      buffer.write('</tr></thead><tbody>');
+      var shown = 0;
+      for (final row in IntelligentUiProjector._asList(map['rows'])) {
+        if (shown >= _maxTableRows) break;
+        final cells = IntelligentUiProjector._asList(row);
+        if (cells.isEmpty) continue;
+        shown++;
+        buffer.write('<tr>');
+        // 每行按表头列数截断，表头和单元格的列数才一致。
+        for (var i = 0; i < cells.length && i < columns.length; i++) {
+          buffer.write('<td>${_text(_cellText(cells[i]) ?? '')}</td>');
+        }
+        buffer.write('</tr>');
+      }
+      buffer.write('</tbody></table>');
+    }
+
+    final items = StringBuffer();
+    for (final entry in IntelligentUiProjector._asList(data['items'])) {
+      if (entry is String) {
+        if (entry.isEmpty) continue;
+        items.write('<li>${_text(entry)}</li>');
+        continue;
+      }
+      final map = IntelligentUiProjector._asMap(entry);
+      if (map == null) continue;
+      final label = _cellText(map['label']) ?? '';
+      final value = _cellText(map['value']) ?? '';
+      if (label.isEmpty && value.isEmpty) continue;
+      items.write('<li><strong>${_text(label)}</strong>${value.isEmpty ? '' : ' ${_text(value)}'}</li>');
+    }
+    if (items.isNotEmpty) buffer.write('<ul class="dsh-portable-items">$items</ul>');
+
+    final markdown = IntelligentUiProjector._asString(data['markdown']);
+    if (markdown != null && markdown.trim().isNotEmpty) buffer.write(_markdownHtml(markdown));
+
+    if (buffer.isEmpty) return null;
+    final html = '<div class="dsh-portable">$buffer</div>';
+    return html.length > _maxHtmlChars ? null : html;
+  }
+
+  /// 极简 Markdown：段落、#/##/### 标题、粗体、斜体、行内代码、围栏代码块、
+  /// 无序/有序列表和 https 链接。先转义再套标签，原始标签不会透传。
+  static String _markdownHtml(String markdown) {
+    final lines = markdown.split('\n');
+    final buffer = StringBuffer();
+    final paragraph = <String>[];
+    var list = '';
+
+    void flushParagraph() {
+      if (paragraph.isEmpty) return;
+      buffer.write('<p>${paragraph.join('<br>')}</p>');
+      paragraph.clear();
+    }
+
+    void closeList() {
+      if (list.isEmpty) return;
+      buffer.write('</$list>');
+      list = '';
+    }
+
+    var index = 0;
+    while (index < lines.length) {
+      final line = lines[index];
+      final trimmed = line.trim();
+      if (trimmed.startsWith(_fence)) {
+        flushParagraph();
+        closeList();
+        index++;
+        final code = <String>[];
+        while (index < lines.length && !lines[index].trim().startsWith(_fence)) {
+          code.add(lines[index]);
+          index++;
+        }
+        // 跳过后面的围栏；文件末尾没闭合也照常输出。
+        index++;
+        buffer.write('<pre><code>${_text(code.join('\n'))}</code></pre>');
+        continue;
+      }
+      if (trimmed.isEmpty) {
+        flushParagraph();
+        closeList();
+        index++;
+        continue;
+      }
+      final heading = _heading.firstMatch(trimmed);
+      if (heading != null) {
+        flushParagraph();
+        closeList();
+        final level = heading.group(1)!.length;
+        buffer.write('<h$level>${_inline(heading.group(2)!)}</h$level>');
+        index++;
+        continue;
+      }
+      final bullet = _bullet.firstMatch(trimmed);
+      final ordered = bullet == null ? _ordered.firstMatch(trimmed) : null;
+      if (bullet != null || ordered != null) {
+        flushParagraph();
+        final tag = bullet != null ? 'ul' : 'ol';
+        if (list != tag) {
+          closeList();
+          buffer.write('<$tag>');
+          list = tag;
+        }
+        buffer.write('<li>${_inline((bullet ?? ordered)!.group(1)!)}</li>');
+        index++;
+        continue;
+      }
+      closeList();
+      paragraph.add(_inline(trimmed));
+      index++;
+    }
+    flushParagraph();
+    closeList();
+    return buffer.toString();
+  }
+
+  /// 行内 Markdown：先按行内代码切分（代码里的星号不算强调），每段转义后
+  /// 再套链接、粗体、斜体。
+  static String _inline(String text) {
+    final buffer = StringBuffer();
+    var index = 0;
+    for (final match in _codeSpan.allMatches(text)) {
+      buffer.write(_linkify(text.substring(index, match.start)));
+      buffer.write('<code>${_text(match.group(1)!)}</code>');
+      index = match.end;
+    }
+    buffer.write(_linkify(text.substring(index)));
+    return buffer.toString();
+  }
+
+  static String _linkify(String text) {
+    final buffer = StringBuffer();
+    var index = 0;
+    for (final match in _link.allMatches(text)) {
+      buffer.write(_emphasis(text.substring(index, match.start)));
+      final href = _attrEscape.convert(match.group(2)!);
+      buffer.write('<a href="$href">${_emphasis(match.group(1)!)}</a>');
+      index = match.end;
+    }
+    buffer.write(_emphasis(text.substring(index)));
+    return buffer.toString();
+  }
+
+  static String _emphasis(String text) => _text(text)
+      .replaceAllMapped(_bold, (match) => '<strong>${match.group(1)!}</strong>')
+      .replaceAllMapped(_italic, (match) => '<em>${match.group(1)!}</em>');
+
+  static String _text(String value) => _escape.convert(value);
+
+  /// 单元格 / 数值统一转文本；对象和数组不做渲染。
+  static String? _cellText(Object? value) => switch (value) {
+    null => null,
+    final String text => text,
+    final num number => '$number',
+    final bool flag => '$flag',
+    _ => null,
+  };
+
+  /// metrics 的 trend 只认 up / down / flat，其余按无趋势处理。
+  static String? _trend(Object? value) {
+    final trend = IntelligentUiProjector._asString(value);
+    return trend == 'up' || trend == 'down' || trend == 'flat' ? trend : null;
   }
 }
 
