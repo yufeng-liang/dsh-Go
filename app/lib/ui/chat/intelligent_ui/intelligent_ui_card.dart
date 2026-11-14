@@ -402,6 +402,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
           onWebResourceError: (error) {
             if (error.isForMainFrame ?? true) {
               _setError(error.description);
+            } else {
+              // 子资源（图片/iframe）失败打日志：排查真机媒体加载问题靠它。
+              debugPrint('diui resource error: ${error.errorCode} ${error.description} ${error.url}');
             }
           },
         ),
