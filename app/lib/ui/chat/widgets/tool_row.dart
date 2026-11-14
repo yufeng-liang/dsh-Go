@@ -102,6 +102,12 @@ class ToolRow extends StatefulWidget {
 }
 
 class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
+  // 保活行的 LRU 注册表:每个带智能 UI 卡的行是一个常驻 WebView,
+  // 同屏常驻太多会让滚动掉帧,只留最近查看的几张,更旧的照常回收
+  // (划回时重新加载,换取滑动流畅)。
+  static final Set<_ToolRowState> _keepAliveLru = <_ToolRowState>{};
+  static const int _maxKeepAlive = 6;
+
   ToolView? _view;
 
   /// 用户点过之后的展开状态;没点过时按内容定:带原生卡片的默认展开
@@ -111,12 +117,34 @@ class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
   // 带智能 UI 卡的行在滚出视窗后保持存活:卡内 WebView 重建要重跑整个
   // 渲染器与图片加载,划走再划回会白屏重载;普通工具行不值得,照常回收。
   @override
-  bool get wantKeepAlive => widget.uiArtifact != null;
+  bool get wantKeepAlive => widget.uiArtifact != null && _keepAliveLru.contains(this);
+
+  // 把自己记为最近查看的保活行;超过上限时把最旧的逐出并立即释放。
+  void _registerKeepAlive() {
+    if (widget.uiArtifact == null) {
+      if (_keepAliveLru.remove(this)) updateKeepAlive();
+      return;
+    }
+    if (_keepAliveLru.add(this)) {
+      while (_keepAliveLru.length > _maxKeepAlive) {
+        final oldest = _keepAliveLru.first;
+        _keepAliveLru.remove(oldest);
+        if (oldest != this && oldest.mounted) oldest.updateKeepAlive();
+      }
+      updateKeepAlive();
+    }
+  }
 
   @override
   void didUpdateWidget(covariant ToolRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.uiArtifact != widget.uiArtifact) updateKeepAlive();
+    if (oldWidget.uiArtifact != widget.uiArtifact) _registerKeepAlive();
+  }
+
+  @override
+  void dispose() {
+    _keepAliveLru.remove(this);
+    super.dispose();
   }
 
   ToolView get view => _view = ToolView.of(widget.item, _view);
@@ -131,6 +159,7 @@ class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
 
   @override
   Widget build(BuildContext context) {
+    _registerKeepAlive();
     super.build(context);
     final v = view;
     // 一轮折叠后:只露卡片本身,工具行收在过程里。
