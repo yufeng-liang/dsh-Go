@@ -15,6 +15,9 @@ class ChatRowsCache {
   ChatState? _state;
   bool _foldTurns = false;
   List<TurnArtifacts> _artifacts = const [];
+  // 卡片里带 host/session,换了人就不能复用旧行。
+  String _hostId = '';
+  String _sessionId = '';
   List<ChatRow> _rows = const [];
   Map<String, int> _index = const {};
 
@@ -30,12 +33,16 @@ class ChatRowsCache {
     required bool foldTurns,
     List<TurnArtifacts> artifacts = const [],
     List<IntelligentUiArtifact> intelligentUis = const [],
+    String hostId = '',
+    String sessionId = '',
   }) {
     final previous = _state;
     _onlyDraftChanged = false;
     List<ChatRow>? reused;
     if (previous != null &&
         foldTurns == _foldTurns &&
+        hostId == _hostId &&
+        sessionId == _sessionId &&
         listEquals(artifacts, _artifacts) &&
         state.intelligentUiRevision == previous.intelligentUiRevision &&
         state.running == previous.running &&
@@ -50,6 +57,8 @@ class ChatRowsCache {
     _state = state;
     _foldTurns = foldTurns;
     _artifacts = artifacts;
+    _hostId = hostId;
+    _sessionId = sessionId;
     if (reused != null) {
       _rows = reused;
     } else {
@@ -65,6 +74,8 @@ class ChatRowsCache {
         foldTurns: foldTurns,
         artifacts: artifacts,
         intelligentUis: intelligentUis,
+        hostId: hostId,
+        sessionId: sessionId,
       );
       _index = {for (var i = 0; i < _rows.length; i++) _rows[i].key: i};
     }

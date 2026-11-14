@@ -591,6 +591,8 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     required bool foldTurns,
     List<TurnArtifacts> artifacts = const [],
     List<IntelligentUiArtifact> intelligentUis = const [],
+    String hostId = '',
+    String sessionId = '',
   }) {
     if (s.loading || !foldTurns) {
       _settling.clear();
@@ -622,6 +624,9 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       s.autoAnswered,
       s.commands,
       s.turns,
+      // 换 host 或换会话:portable 卡片带的 host/session 变了,行不能复用。
+      hostId,
+      sessionId,
       s.intelligentUiRevision,
     );
     if (_rowsInputs == inputs) {
@@ -656,7 +661,14 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     if (oldestTurn != null) _oldestRowSeq = math.min(_oldestRowSeq ?? oldestTurn, oldestTurn);
     final prepended = previousOldest != null && _oldestRowSeq != null && _oldestRowSeq! < previousOldest;
     final hadPending = _rows.any((r) => r is PendingRow);
-    _rows = _rowCache.update(s, foldTurns: foldTurns, artifacts: artifacts, intelligentUis: intelligentUis);
+    _rows = _rowCache.update(
+      s,
+      foldTurns: foldTurns,
+      artifacts: artifacts,
+      intelligentUis: intelligentUis,
+      hostId: hostId,
+      sessionId: sessionId,
+    );
     _index = _rowCache.index;
     // Only a draft streaming on keeps the other rows' widgets: anything else
     // may change what a row shows beyond its own item (running, pending,
@@ -898,6 +910,8 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       foldTurns: ref.watch(settingsProvider.select((s) => s.foldCompletedTurns)),
       artifacts: ref.watch(sessionArtifactsProvider(widget.sessionId)),
       intelligentUis: s.intelligentUis,
+      hostId: ref.read(activeHostProvider).id,
+      sessionId: widget.sessionId,
     );
     final rows = _rows;
     final split = _split;

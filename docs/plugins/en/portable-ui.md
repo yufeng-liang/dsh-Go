@@ -1,5 +1,6 @@
-
 # Portable chat UI protocol (draft)
+
+[中文](../portable-ui.md)
 
 dsh-go does not require every UI plugin to adapt its own native components. The host can render serializable UI from a tool result's `presentationMeta` through one portable priority list. This page describes the protocol and what the App currently implements.
 
@@ -19,7 +20,8 @@ The parser must **skip** 1–3 so the portable adapter never competes with the n
 
 Layers 5 and 6 recognition (an item that does not qualify falls through to the next one):
 
-- Layer 5 tries `presentationMeta.html` (string), `presentationMeta.widget.html` (when `widget` is a Map, take `html`, `css`, `title`), then `presentationMeta.fragment` (string). Each candidate must be non-empty and free of `<script`.
+- Layer 5 tries `presentationMeta.html` (string), `presentationMeta.widget.html` (when `widget` is a Map, take `html`, `css`, `title`), then `presentationMeta.fragment` (string). Each candidate must be non-empty and must not contain a script start tag: the implementation uses the case-insensitive regex `<\s*/?\s*script`, so `<script>`, `<script/>` and an unclosed `<script` are all rejected — do not read this as the weaker "contains `<script`" rule.
+- Those three candidates are sanitized by `_sanitizeWidgetHtml` (`app/lib/state/intelligent_ui.dart`) before the card is built: inline `on*=` event attributes and the `javascript:` scheme are stripped; this is the pre-render sanitizing step.
 - Layer 6 tries `presentationMeta.card` (the Map itself is the data source; `title` comes from `card.title` or the outer `presentationMeta.title`), or `presentationMeta.kind == 'card'` (the whole `presentationMeta` is the data source).
 - When neither layer yields usable HTML, the tool row falls back to layer 7.
 
@@ -48,7 +50,7 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
 
 ## Current App implementation
 
-`PortableUiAdapter.fromTool` (`app/lib/state/intelligent_ui.dart:153`) reads tool results while chat rows are projected (`app/lib/ui/chat/chat_rows.dart:228`) and turns a match into a restricted intelligent-UI widget card that mounts through the same path as intelligent-ui cards (keyed by `callId` / `seq`). The first match wins:
+`PortableUiAdapter.fromTool` (`app/lib/state/intelligent_ui.dart:156`) reads tool results while chat rows are projected (`app/lib/ui/chat/chat_rows.dart:234`) and turns a match into a restricted intelligent-UI widget card that mounts through the same path as intelligent-ui cards (keyed by `callId` / `seq`). The first match wins:
 
 1. `presentationMeta` is not a Map, or the tool result has no `seq` → no card.
 2. Skip layers 1–3: any non-null `dsh-go/view`, `dsh-go/media`, or `ui`, or a tool named `ui_render` / `ui_render_widget` / `ui_compose`.
@@ -57,13 +59,15 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
 5. Layer 6: `card` / `kind == 'card'` → structured card.
 6. No match → no card; the tool stays an ordinary row.
 
+A portable artifact does not only live on the chat row: `IntelligentUiProjection` (`app/lib/state/intelligent_ui.dart`) also projects the adapter's matches into the conversation's `artifacts` (`uiId` is the `callId`, `version` is 1, `hostId` / `sessionId` come from the session context), which is how portable cards reach the share card and link replay. In the chat list `PortableUiAdapter` is only the fallback for a projection miss, and it de-duplicates by `callId`: one card per `callId`.
+
 | kind | input | current mapping |
 |---|---|---|
-| `html` | `html` (required, non-empty, no `<script`), optional `css`, optional `title` | emits `{html, css, initialHeight: 48}` |
+| `html` | `html` (required, non-empty, must not match `<\s*/?\s*script`), optional `css`, optional `title` | emits `{html, css, initialHeight: 48}` |
 | `structured` | structured fields (table below) | emits structured HTML |
-| `media` | `url` (`https://` only) | emits `<img>`; external loading still obeys `policy.allowMedia` / `policy.mediaOrigins` |
+| `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; the `<img>` still obeys `policy.allowMedia` / `policy.mediaOrigins` for external loading |
 
-`policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` and `originSeq` are the tool result's `seq`, and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:888`); empty HTML or `<script` produces no card.
+`policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` is the tool result's `seq`, `originSeq` is the `seq` where the tool call first appeared (equal to `seq` when the chat row calls the adapter directly), and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:920`); empty HTML or HTML matching `<\s*/?\s*script` produces no card. CSS has exactly two sources: layer 4 with `kind: html` takes the envelope's own `css`, and layer 5 `widget.html` takes `widget.css`; a bare `presentationMeta.html` or `presentationMeta.fragment` never reads an outer `presentationMeta.css`.
 
 Structured rendering (`structured` and `card` share `_structuredHtml`); every text is `HtmlEscape`d first:
 
@@ -76,7 +80,7 @@ Structured rendering (`structured` and `card` share `_structuredHtml`); every te
 | `items` | list of String or `{label, value}` | `<ul><li>` |
 | `markdown` | String | minimal Markdown: paragraphs, `#` / `##` / `###` headings, `**bold**`, `*italic*`, backtick code spans, fenced code blocks, `-` / `1.` lists, `[text](https://…)`; escape first, then wrap, so no raw tag survives |
 
-Structured HTML longer than 60000 characters produces no card, and so does a card where no field rendered anything. Raw HTML from layers 4 and 5 is not subject to that limit; only the 480000-character gate in `_validWidget` applies. CSS is one shared block (`.dsh-portable`, `.dsh-portable-metrics`, `.dsh-portable-table`, …) and `initialHeight` stays 48.
+The 60000-character HTML limit applies to **every** HTML source: the envelope's `html`, `presentationMeta.html`, `widget.html`, `fragment` and structured rendering alike produce no card past it (nothing is truncated, and there is no half card). The 480000-character gate in `_validWidget` is a separate limit. A card where no field rendered anything also produces no card. CSS is one shared block (`.dsh-portable`, `.dsh-portable-metrics`, `.dsh-portable-table`, …) and `initialHeight` stays 48.
 
 Share snapshots follow the card's own `policy` (**implemented**):
 

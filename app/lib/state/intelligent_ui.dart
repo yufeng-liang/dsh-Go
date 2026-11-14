@@ -140,7 +140,9 @@ class PortableUiAdapter {
   /// 属性值转义额外处理双引号，链接不会截断 href。
   static const _attrEscape = HtmlEscape(HtmlEscapeMode.attribute);
 
-  static final _script = RegExp(r'<script[\s>]', caseSensitive: false);
+  /// script 闸门：`<script`、`<script/>`、缺闭合的 `<script`、任意大小写都命中。
+  /// 库内只保留这一份，投影器的 widget 校验复用同一个常量。
+  static final _script = RegExp(r'<\s*/?\s*script', caseSensitive: false);
   static final _codeSpan = RegExp(r'\x60([^\x60]+)\x60');
   static final _link = RegExp(r'\[([^\]]+)\]\((https://[^\s()]+)\)');
   static final _bold = RegExp(r'\*\*([^*]+)\*\*');
@@ -150,16 +152,39 @@ class PortableUiAdapter {
   static final _ordered = RegExp(r'^\d+\.\s+(.+)$');
   static const _fence = '\x60\x60\x60';
 
+  /// 从工具行出卡：只负责取字段，识别逻辑全在 [fromMeta]。
   static IntelligentUiArtifact? fromTool(
     ToolChatItem item, {
     String hostId = '',
     String sessionId = '',
   }) {
-    final meta = item.meta;
     final seq = item.seq;
-    if (meta is! Map || seq == null) return null;
+    if (seq == null) return null;
+    return fromMeta(
+      meta: item.meta,
+      callId: item.callId,
+      seq: seq,
+      name: item.name,
+      hostId: hostId,
+      sessionId: sessionId,
+    );
+  }
+
+  /// 从 presentationMeta 出卡：工具行识别与投影器（portable 卡）共用这一份。
+  /// [originSeq] 为空时按 [seq] 处理，产物字段口径与旧的 fromTool 一致。
+  static IntelligentUiArtifact? fromMeta({
+    required Object? meta,
+    required String callId,
+    required int seq,
+    String name = '',
+    String hostId = '',
+    String sessionId = '',
+    int? originSeq,
+  }) {
+    if (meta is! Map) return null;
     // intelligent-ui 自己的工具由投影器出卡；再走 portable 会在同一行出两张。
-    if (intelligentUiToolNames.contains(item.name)) return null;
+    if (intelligentUiToolNames.contains(name)) return null;
+    final origin = originSeq ?? seq;
     for (final key in _reservedKeys) {
       if (meta[key] != null) return null;
     }
@@ -168,10 +193,11 @@ class PortableUiAdapter {
     if (meta['dsh-go/portable'] is Map) {
       final map = IntelligentUiProjector._asMap(meta['dsh-go/portable'])!;
       return _artifact(
-        item,
+        callId,
         seq,
         hostId,
         sessionId,
+        originSeq: origin,
         definition: switch (IntelligentUiProjector._asString(map['kind'])) {
           'html' => _htmlDefinition(map),
           'structured' => _structuredDefinition(map),
@@ -189,10 +215,11 @@ class PortableUiAdapter {
     final fragment = _fragmentDefinition(meta);
     if (fragment != null) {
       return _artifact(
-        item,
+        callId,
         seq,
         hostId,
         sessionId,
+        originSeq: origin,
         definition: fragment.$1,
         title: fragment.$2,
         policy: policy,
@@ -203,10 +230,11 @@ class PortableUiAdapter {
     final card = _cardDefinition(meta);
     if (card == null) return null;
     return _artifact(
-      item,
+      callId,
       seq,
       hostId,
       sessionId,
+      originSeq: origin,
       definition: card.$1,
       title: card.$2,
       policy: policy,
@@ -215,26 +243,27 @@ class PortableUiAdapter {
 
   /// 统一产物：widget 卡，uiId 用调用 id，definition 必须过 widget 校验。
   static IntelligentUiArtifact? _artifact(
-    ToolChatItem item,
+    String callId,
     int seq,
     String hostId,
     String sessionId, {
     required Map<String, Object?>? definition,
     required String? title,
     required Map<String, Object?> policy,
+    required int originSeq,
   }) {
     if (definition == null || !IntelligentUiProjector._validWidget(definition)) return null;
     return IntelligentUiArtifact(
       kind: IntelligentUiKind.widget,
       hostId: hostId,
       sessionId: sessionId,
-      uiId: item.callId,
+      uiId: callId,
       version: 1,
       definition: definition,
       seq: seq,
       title: title,
       policy: policy,
-      originSeq: seq,
+      originSeq: originSeq,
     );
   }
 
@@ -244,10 +273,13 @@ class PortableUiAdapter {
     'initialHeight': _initialHeight,
   };
 
-  /// 插件给的 HTML 片段：必须是非空字符串且不含 script 标签。
+  /// 插件给的 HTML 片段：必须是非空字符串、不含 script 标签、不超长度上限，
+  /// 且一律先摘掉 on*= 事件属性与 javascript: 再交给 WebView。
   static String? _htmlOf(Object? value) {
     if (value is! String || value.trim().isEmpty) return null;
-    return _script.hasMatch(value) ? null : value;
+    if (value.trim().length > _maxHtmlChars) return null;
+    if (_script.hasMatch(value)) return null;
+    return _sanitizeWidgetHtml(value);
   }
 
   static Map<String, Object?>? _htmlDefinition(Map<String, Object?> map) {
@@ -259,7 +291,7 @@ class PortableUiAdapter {
   static Map<String, Object?>? _mediaDefinition(Map<String, Object?> map) {
     final url = IntelligentUiProjector._asString(map['url']);
     if (url == null || !url.startsWith('https://')) return null;
-    final src = _text(url);
+    final src = _attrEscape.convert(url.trim());
     return _htmlCard(
       '<img class="dsh-portable-media" src="$src" alt="">',
       css: '.dsh-portable-media{display:block;max-width:100%;height:auto;border-radius:8px}',
@@ -887,7 +919,7 @@ class IntelligentUiProjector {
   /// widget 块的准入条件与 iui `validateWidget` 对齐。
   static bool _validWidget(Map<String, Object?> args) {
     final html = _asString(args['html']);
-    if (html == null || html.trim().isEmpty || RegExp(r'<script[\s>]', caseSensitive: false).hasMatch(html)) {
+    if (html == null || html.trim().isEmpty || PortableUiAdapter._script.hasMatch(html)) {
       return false;
     }
     final title = args['title'];
@@ -1025,6 +1057,10 @@ class IntelligentUiProjection {
   final Map<String, _UiCall> _calls = {};
   final List<_SettledCall> _settled = [];
   final Map<String, IntelligentUiArtifact> _latest = {};
+  /// 所有工具调用名（不只 ui_*），portable 出卡时按 callId 取。
+  final Map<String, String> _callNames = {};
+  /// portable 适配器产出的卡片；与 _latest 分开存，ui_patch 只动 _latest。
+  final Map<String, IntelligentUiArtifact> _portable = {};
   final Map<String, int> _blockVersions = {};
   int _settledApplied = 0;
   List<IntelligentUiArtifact>? _artifacts;
@@ -1032,7 +1068,12 @@ class IntelligentUiProjection {
 
   List<IntelligentUiArtifact> get artifacts {
     if (_dirty) {
-      final values = _latest.values.toList(growable: false)..sort((a, b) => a.seq.compareTo(b.seq));
+      final values = <IntelligentUiArtifact>[..._latest.values];
+      for (final portable in _portable.values) {
+        // 同一个 uiId 同时有两份时，投影器的产物优先。
+        if (!_latest.containsKey(portable.uiId)) values.add(portable);
+      }
+      values.sort((a, b) => a.seq.compareTo(b.seq));
       _artifacts = List.unmodifiable(values);
       _dirty = false;
     }
@@ -1045,6 +1086,8 @@ class IntelligentUiProjection {
     _calls.clear();
     _settled.clear();
     _latest.clear();
+    _callNames.clear();
+    _portable.clear();
     _blockVersions.clear();
     _settledApplied = 0;
     _artifacts = null;
@@ -1078,6 +1121,8 @@ class IntelligentUiProjection {
       case ToolCallEvent():
         _rootTurns[event.callId] = event.turn;
         _rootSeqs.putIfAbsent(event.callId, () => event.seq);
+        // 所有调用名都记：portable 卡要用它做保留键与 ui_* 排除。
+        _callNames[event.callId] = event.name;
         if (!IntelligentUiProjector._tools.contains(event.name)) return;
         final args = IntelligentUiProjector._argumentsOf(event.arguments);
         if (args != null) {
@@ -1092,6 +1137,23 @@ class IntelligentUiProjection {
             IntelligentUiProjector._asString(event.message.source.raw['callId']) ??
             IntelligentUiProjector._asString(data['callId']);
         if (id == null || id.isEmpty) return;
+        // portable 卡：不看 ok 字段，也不写进 _latest，只补一张通用卡。
+        final portableMeta = IntelligentUiProjector._asMap(data['meta']);
+        if (portableMeta != null && !_latest.containsKey(id) && !_portable.containsKey(id)) {
+          final portable = PortableUiAdapter.fromMeta(
+            meta: portableMeta,
+            callId: id,
+            seq: event.seq,
+            name: _callNames[id] ?? '',
+            hostId: hostId,
+            sessionId: sessionId,
+            originSeq: _rootSeqs[id],
+          );
+          if (portable != null) {
+            _portable[id] = portable;
+            _dirty = true;
+          }
+        }
         final call = _calls[id];
         if (call == null) return;
         final meta = IntelligentUiProjector._asMap(data['meta']);
