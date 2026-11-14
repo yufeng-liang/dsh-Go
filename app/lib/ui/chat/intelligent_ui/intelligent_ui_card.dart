@@ -480,6 +480,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     try {
       final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view?bvid=$bvid');
       final res = await http.get(uri).timeout(const Duration(seconds: 8));
+      debugPrint('diui bili prefetch: $bvid -> ${res.statusCode}');
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         final data = body is Map ? body['data'] : null;
@@ -490,7 +491,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
           if (mounted && _ready) _postArtifact();
         }
       }
-    } catch (_) {
+    } catch (err) {
+      debugPrint('diui bili prefetch failed: $bvid $err');
       // 封面预取失败静默，渲染器保留占位。
     } finally {
       _biliFetching.remove(bvid);
@@ -503,12 +505,16 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     // 与 remote 一致：不给 CDN 外链权限；媒体与打开链接按插件 policy 放行。
     final artifact = _renderArtifact(widget.artifact);
     final rawPolicy = artifact['policy'];
+    final covers =
+        _biliCovers.isEmpty ? null : Map<String, String>.of(_biliCovers);
+    if (covers != null) {
+      debugPrint('diui covers injected: ${covers.length}');
+    }
     final policy = <String, Object?>{
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
       'allowNetwork': false,
       'cdn': const <String>[],
-      if (_biliCovers.isNotEmpty)
-        'diuiCovers': Map<String, String>.of(_biliCovers),
+      if (covers != null) 'diuiCovers': covers,
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
