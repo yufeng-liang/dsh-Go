@@ -34,6 +34,9 @@ abstract final class AppIcons {
   static const openWith = DshGlyphs.dotsNine;
   static const allFeatures = DshGlyphs.dotsNine;
   static const browser = DshGlyphs.browser;
+
+  /// 卡片标题栏的「全屏查看」:把卡片撑满屏幕(四角框)。
+  static const fullscreen = DshGlyphs.scan;
   static const scrollToBottom = DshGlyphs.arrowDown;
   static const scrollToTop = DshGlyphs.arrowUp;
   static const sidebar = DshGlyphs.sidebarSimpleRight;

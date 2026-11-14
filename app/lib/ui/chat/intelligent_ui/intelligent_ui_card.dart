@@ -727,7 +727,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
             ? IconButton(
                 onPressed: _openFullscreen,
                 tooltip: l10n.activityStepFullScreen,
-                icon: const Icon(Icons.fullscreen, size: 20),
+                icon: const Icon(AppIcons.fullscreen, size: 20),
               )
             : null,
         children: [cardBody],
@@ -814,7 +814,7 @@ class _ImmersiveCard extends StatelessWidget {
                       onPressed: onFullscreen,
                       padding: EdgeInsets.zero,
                       tooltip: context.l10n.activityStepFullScreen,
-                      icon: const Icon(Icons.fullscreen, size: 18),
+                      icon: const Icon(AppIcons.fullscreen, size: 18),
                     ),
                   ),
               ],

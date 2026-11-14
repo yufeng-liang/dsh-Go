@@ -55,7 +55,6 @@ Widget settingsPage(SettingsPageId id, {String? sessionId}) => switch (id) {
   SettingsPageId.replyPrefs => const ReplyPrefsPage(),
   SettingsPageId.sharedLinks => const HostedLinksPage(),
   SettingsPageId.phone => const PhoneControlScreen(),
-  SettingsPageId.androidShell => const AndroidShellPage(),
   SettingsPageId.phoneAppRules => const PhoneAppRulesPage(),
   SettingsPageId.phoneAndroidShell => const AndroidShellPage(),
   SettingsPageId.phoneDnd => const PhoneDndPage(),
