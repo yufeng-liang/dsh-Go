@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -296,6 +297,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   int _textZoom = 100;
   String _locale = 'zh-CN';
   String? _error;
+  // B 站封面由 Dart 侧预取后注入（WebView 里的跨源 fetch 被 B 站风控 403）。
+  final Map<String, String> _biliCovers = {};
+  final Set<String> _biliFetching = {};
 
   int get _maxHeight {
     final value = widget.artifact.policy['maxHeight'];
@@ -309,6 +313,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     _token = '';
     _dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
     _locale = _localeOf(context);
+    _ensureBiliCovers();
     _load();
   }
 
@@ -348,6 +353,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     }
     if (!_ready) return;
     if (changed) {
+      _ensureBiliCovers();
       _postArtifact();
     }
   }
@@ -457,6 +463,40 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     setState(() => _error = message.length > 240 ? message.substring(0, 240) : message);
   }
 
+  void _ensureBiliCovers() {
+    // B 站 API 拒绝 WebView 发起的跨源 fetch（陌生 Origin 直接 403 风控页），
+    // 由 Dart 裸请求预取封面，经 policy.diuiCovers 注入渲染器。
+    final bvids = RegExp('BV[0-9A-Za-z]{10}')
+        .allMatches(jsonEncode(widget.artifact.toRendererJson()))
+        .map((m) => m.group(0)!)
+        .toSet();
+    for (final bvid in bvids) {
+      if (_biliCovers.containsKey(bvid) || !_biliFetching.add(bvid)) continue;
+      unawaited(_prefetchBiliCover(bvid));
+    }
+  }
+
+  Future<void> _prefetchBiliCover(String bvid) async {
+    try {
+      final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view?bvid=$bvid');
+      final res = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final data = body is Map ? body['data'] : null;
+        final pic = data is Map ? data['pic'] : null;
+        if (pic is String && pic.isNotEmpty) {
+          _biliCovers[bvid] =
+              pic.startsWith('http://') ? 'https://${pic.substring(7)}' : pic;
+          if (mounted && _ready) _postArtifact();
+        }
+      }
+    } catch (_) {
+      // 封面预取失败静默，渲染器保留占位。
+    } finally {
+      _biliFetching.remove(bvid);
+    }
+  }
+
   void _postArtifact() {
     final controller = _controller;
     if (controller == null) return;
@@ -467,6 +507,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
       'allowNetwork': false,
       'cdn': const <String>[],
+      if (_biliCovers.isNotEmpty)
+        'diuiCovers': Map<String, String>.of(_biliCovers),
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
