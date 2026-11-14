@@ -112,7 +112,7 @@ String _contentSecurityPolicy(Map<String, Object?> policy) {
   final mediaSrc = media.isEmpty ? "'none'" : media.join(' ');
   return "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; "
       "style-src 'unsafe-inline'; img-src ${images.join(' ')}; media-src $mediaSrc; "
-      "font-src data:; connect-src 'none'; frame-src about: data: blob:; "
+      "font-src data:; connect-src https://api.bilibili.com; frame-src about: data: blob:; "
       "form-action 'none'; base-uri 'none'";
 }
 
