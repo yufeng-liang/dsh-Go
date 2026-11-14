@@ -416,6 +416,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         ),
       );
       if (controller.platform case final AndroidWebViewController android) {
+        // 诊断桥：把 WebView console 转进 logcat（发布前移除）。
+        android.setOnConsoleMessage((message) {
+          debugPrint('diui console: ${message.message}');
+        });
         await android.setAllowFileAccess(false);
         await android.setAllowContentAccess(false);
         await android.setMixedContentMode(MixedContentMode.neverAllow);
