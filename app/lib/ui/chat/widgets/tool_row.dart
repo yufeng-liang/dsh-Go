@@ -101,12 +101,23 @@ class ToolRow extends StatefulWidget {
   State<ToolRow> createState() => _ToolRowState();
 }
 
-class _ToolRowState extends State<ToolRow> {
+class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
   ToolView? _view;
 
   /// 用户点过之后的展开状态;没点过时按内容定:带原生卡片的默认展开
   /// (结果到了、卡片出现时也随之展开),其余默认收起。
   bool? _toggled;
+
+  // 带智能 UI 卡的行在滚出视窗后保持存活:卡内 WebView 重建要重跑整个
+  // 渲染器与图片加载,划走再划回会白屏重载;普通工具行不值得,照常回收。
+  @override
+  bool get wantKeepAlive => widget.uiArtifact != null;
+
+  @override
+  void didUpdateWidget(covariant ToolRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uiArtifact != widget.uiArtifact) updateKeepAlive();
+  }
 
   ToolView get view => _view = ToolView.of(widget.item, _view);
 
@@ -120,6 +131,7 @@ class _ToolRowState extends State<ToolRow> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final v = view;
     // 一轮折叠后:只露卡片本身,工具行收在过程里。
     if (widget.card == ToolCardPlacement.cardOnly) {
