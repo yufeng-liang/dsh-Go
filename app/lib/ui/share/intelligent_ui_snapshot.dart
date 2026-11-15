@@ -105,7 +105,9 @@ window.__diuiSetArtifact($data);
 /// `mapTiles` for map imagery. The CSP built from the same policy still decides
 /// which origins are reachable once the network is on.
 bool snapshotAllowsRemoteMedia(Map<String, Object?> policy) =>
-    intelligentUiImageOrigins(policy).isNotEmpty || intelligentUiMediaOrigins(policy).isNotEmpty;
+    intelligentUiImageOrigins(policy).isNotEmpty ||
+    intelligentUiMediaOrigins(policy).isNotEmpty ||
+    policy['mapTiles'] is Map;
 
 String _buildWidgetSnapshotHtml({
   required String html,

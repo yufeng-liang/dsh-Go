@@ -297,6 +297,12 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   int _textZoom = 100;
   String _locale = 'zh-CN';
   String? _error;
+  // 离线构建的插件 policy 恒无 mapTiles；应用侧给默认 OSM 源，Map 卡才有真瓦片。
+  static const Map<String, Object?> _defaultMapTiles = <String, Object?>{
+    'url': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'attribution': '© OpenStreetMap contributors',
+    'maxZoom': 19,
+  };
   // B 站封面由 Dart 侧预取后注入（WebView 里的跨源 fetch 被 B 站风控 403）。
   final Map<String, String> _biliCovers = {};
   final Set<String> _biliFetching = {};
@@ -519,6 +525,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       'allowNetwork': false,
       'cdn': const <String>[],
       if (covers != null) 'diuiCovers': covers,
+      if (rawPolicy is! Map || rawPolicy['mapTiles'] == null) 'mapTiles': _defaultMapTiles,
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
