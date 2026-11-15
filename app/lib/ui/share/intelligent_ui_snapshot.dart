@@ -163,6 +163,13 @@ $safeCss
 const _widgetFitCss =
     'html,body,#ui{overflow:hidden!important} *{box-sizing:border-box!important;min-width:0!important}';
 
+/// 离线构建的插件 policy 恒无 mapTiles；应用侧给默认 OSM 源，Map 卡才有真瓦片。
+const Map<String, Object?> _defaultMapTiles = <String, Object?>{
+  'url': 'https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+  'attribution': '© 高德地图',
+  'maxZoom': 18,
+};
+
 class IntelligentUiSnapshot {
   const IntelligentUiSnapshot._();
 
@@ -231,6 +238,8 @@ class IntelligentUiSnapshot {
       }
       final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
       final resolvedPolicy = Map<String, Object?>.from(policy);
+      // 离线构建的插件 policy 恒无 mapTiles，分享快照同应用卡注入默认源。
+      resolvedPolicy['mapTiles'] ??= _defaultMapTiles;
       final artifact = IntelligentUiArtifact(
         kind: IntelligentUiKind.values.firstWhere(
           (value) => value.name == kind,
