@@ -526,7 +526,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
       'allowNetwork': false,
       'cdn': const <String>[],
-      if (covers != null) 'diuiCovers': covers,
+      'diuiCovers': ?covers,
       if (rawPolicy is! Map || rawPolicy['mapTiles'] == null) 'mapTiles': _defaultMapTiles,
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
