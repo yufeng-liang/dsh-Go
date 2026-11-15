@@ -4730,6 +4730,7 @@ svg,canvas,img,video{max-width:100%}
     var ui = document.getElementById('ui-root') || document.getElementById('ui');
     var h = Math.ceil(ui && ui.scrollHeight > 0 ? ui.scrollHeight : Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0));
     h = Math.max(50, Math.min(MAX, h));
+    try{console.log('diui measure', JSON.stringify({uiH: ui ? ui.scrollHeight : null, h: h, last: last}))}catch(e){}
     if (h !== last) { last = h; post({ type: 'resize', height: h }); }
   }
   new ResizeObserver(measure).observe(document.getElementById('ui-root')||document.documentElement);
