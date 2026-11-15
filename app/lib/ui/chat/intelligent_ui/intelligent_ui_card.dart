@@ -587,7 +587,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         final height = parsed.height;
         if (height == null || !height.isFinite) return;
         debugPrint('diui resize: $height -> _height');
-        setState(() => _height = (height.ceil() + 8).clamp(100, _maxHeight).toInt());
+        setState(() => _height = height.ceil().clamp(56, _maxHeight).toInt());
         break;
       case 'error':
         _setError(parsed.data['message'] is String ? parsed.data['message'] as String : 'renderer error');
