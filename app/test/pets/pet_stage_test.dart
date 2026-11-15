@@ -8,7 +8,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show SemanticsAction;
 
+import 'package:dsh_app/native_animation/native_animation_channel.dart';
 import 'package:dsh_app/pets/pet_mood.dart';
 import 'package:dsh_app/pets/pet_pack.dart';
 import 'package:dsh_app/pets/pet_prefs.dart';
@@ -23,6 +25,7 @@ import 'package:dsh_app/ui/pets/pet_perch.dart';
 import 'package:dsh_app/ui/pets/pet_sprite.dart';
 import 'package:dsh_app/ui/pets/pet_stage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -123,6 +126,68 @@ void main() {
     PetLayer.random = math.Random(7);
   });
   tearDown(PetSheets.instance.clear);
+
+  testWidgets('native movement owns pointer hits while retaining Flutter accessibility actions', (tester) async {
+    NativeAnimationChannel.resetForTesting();
+    final configs = <Map<String, Object?>>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(NativeAnimationChannel.channel, (call) async {
+      if (call.method == 'isAvailable') return true;
+      if (call.method == 'upsert') configs.add(Map<String, Object?>.from(call.arguments as Map));
+      return null;
+    });
+    addTearDown(() {
+      NativeAnimationChannel.resetForTesting();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(NativeAnimationChannel.channel, null);
+    });
+    var listTaps = 0;
+    await pumpPet(tester, onListTap: (_) => listTaps++);
+    final sprite = configs.lastWhere((c) => c['kind'] == 'sprite');
+    Future<void> emit(Map<String, Object?> event) => tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      NativeAnimationChannel.channel.name,
+      NativeAnimationChannel.channel.codec.encodeMethodCall(MethodCall('event', {'id': sprite['id'], ...event})),
+      (_) {},
+    );
+    await emit({'type': 'ready', 'playbackSerial': sprite['playbackSerial']});
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Native views are mocked here. A physical tap must pass through Flutter's
+    // old rectangle, rather than triggering a second, stationary pet target.
+    await tester.tapAt(hitBox(tester, deepy).center);
+    expect(listTaps, 1);
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    try {
+      final data = tester.getSemantics(find.byKey(const ValueKey('pet-body'))).getSemanticsData();
+      expect(data.actions & SemanticsAction.tap.index, isNot(0));
+      expect(data.actions & SemanticsAction.longPress.index, isNot(0));
+    } finally {
+      semantics.dispose();
+    }
+
+    await rebuild(tester, strip: true);
+    await tester.pump();
+    await tester.pump();
+    expect(petLayer(tester).hopping, isTrue);
+    final moving = configs.lastWhere((c) => c['kind'] == 'sprite' && c['motion'] != null);
+    final motion = moving['motion'] as Map;
+    expect(motion['kind'], 'hop');
+    await tester.pump(const Duration(seconds: 1));
+    expect(petLayer(tester).hopping, isTrue, reason: 'only native completion ends this movement');
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: 'the hop has no Flutter ticker');
+    await emit({'type': 'motionEnd', 'serial': motion['serial']});
+    await tester.pump();
+    expect(petLayer(tester).hopping, isFalse);
+    await rebuild(tester);
+    await tester.pump();
+    await tester.pump();
+    expect(petLayer(tester).hopping, isTrue);
+    await emit({'type': 'reset'});
+    await tester.pump();
+    expect(petLayer(tester).hopping, isFalse, reason: 'Activity recreation lands rather than replaying the hop');
+    expect(configs.lastWhere((c) => c['kind'] == 'sprite')['motion'], isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   group('perch geometry', () {
     testWidgets('stands on the composer: foot line on its top edge, a quarter along', (tester) async {
@@ -390,7 +455,9 @@ void main() {
 
     testWidgets('a bare pack (idle only, no reactions): taps and states fall back quietly', (tester) async {
       final bare = deepyWith({
-        'states': {'idle': ['idle']},
+        'states': {
+          'idle': ['idle'],
+        },
         'reactions': <String, Object?>{},
         'bonus': <String, Object?>{},
         'tiers': <String, Object?>{},
@@ -468,7 +535,10 @@ void main() {
     testWidgets('bonus also plays on a state that is not attention', (tester) async {
       final pack = deepyWith({
         'bonus': {
-          'thinking': {'anims': ['error'], 'chance': 0.5},
+          'thinking': {
+            'anims': ['error'],
+            'chance': 0.5,
+          },
         },
       });
       // A die that always draws zero: the chance is hit, the lone extra picked.

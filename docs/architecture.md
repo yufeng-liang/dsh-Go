@@ -220,6 +220,7 @@ HomeShell = [ChatScreen] + [SessionsDrawer 左] + [QuickPanel 右] + [SystemEntr
 |---|---|
 | `update/`（含 `privileged/`） | 自更新：APK 下载/校验/安装，Shizuku/ADB 特权安装与恢复 |
 | `pet/` | 桌宠悬浮窗、精灵渲染、边缘吸附、菜单/截图 |
+| `nativeanimation/` | 页内宠物、页头状态点、活动条鲸尾的小尺寸透明 Surface；独立绘制线程、播放时钟和宠物动作命中 |
 | `notify/` | 通知、实时活动（Live Activity）、回合提醒、通知动作回调 |
 | `files/` `media/` `nativemedia/` | 文件选择器/保存、相册权限队列、视频/音频/麦克风、JS 预览 |
 | `launch/` `icons/` `shortcuts/` `tile/` | 开屏、桌面图标、快捷方式、磁贴 |
@@ -233,6 +234,7 @@ HomeShell = [ChatScreen] + [SessionsDrawer 左] + [QuickPanel 右] + [SystemEntr
 | `dsh/phone` + `/events` + `/preview` | 手机操控方法面、任务事件、预览图 | Method+Event |
 | `dsh/update` | 自更新安装 | Method |
 | `dsh/app` | 置前台、时区等应用级查询 | Method |
+| `dsh/native_animation` | 页内动画 Surface 的配置/移除；素材就绪、动作结束、触摸及 Activity 重建回调 | Method（双向） |
 | 其余 `dsh/files` `dsh/diagnostics` `dsh/share` `dsh/notify` `dsh/native-media` `dsh/voice` `dsh/islands` `dsh/web-files` `dsh/launcher_icon` `dsh/picture_shortcut` `dsh/dynamic_color` `dsh/launch` `dsh/launch_clip` `dsh/links` `dsh/shortcuts` | 各功能域 | 以各目录的 `*Plugin.kt` 与 Dart 端 `*_channel.dart` 为准 |
 
 > `dsh/runtime` 的方法/状态模型以 `app/lib/runtime/runtime_bridge.dart` 为准

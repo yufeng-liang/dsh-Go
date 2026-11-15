@@ -221,7 +221,7 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                                       status: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          StatusDot(tone: widget.status.tone, size: _dot),
+                                          StatusDot(tone: widget.status.tone, size: _dot, nativeAnimation: true),
                                           const SizedBox(width: _dotGap),
                                           Flexible(
                                             child: _StatusLabel(
