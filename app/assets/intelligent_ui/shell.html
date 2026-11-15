@@ -4763,7 +4763,10 @@ svg,canvas,img,video{max-width:100%}
   window.addEventListener('unhandledrejection', function(e){ report('promise', e.reason); });
   var last = 0;
   function measure(){
-    var h = Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0));
+    // 卡外层 WebView 高度等于上次上报值,documentElement.scrollHeight 永远不低
+    // 于视口高,内容收缩时高度只涨不缩;改测 #ui 内容根的真实高度。
+    var ui = document.getElementById('ui');
+    var h = Math.ceil(ui && ui.scrollHeight > 0 ? ui.scrollHeight : Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0));
     h = Math.max(50, Math.min(MAX, h));
     if (h !== last) { last = h; post({ type: 'resize', height: h }); }
   }

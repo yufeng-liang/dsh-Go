@@ -297,11 +297,13 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   int _textZoom = 100;
   String _locale = 'zh-CN';
   String? _error;
-  // 离线构建的插件 policy 恒无 mapTiles；应用侧给默认 OSM 源，Map 卡才有真瓦片。
+  // 离线构建的插件 policy 恒无 mapTiles；应用侧给默认瓦片源（OSM 在国内被
+  // 重置连不上，高德栅格瓦片直连可达且无需 key），Map 卡才有真瓦片。
   static const Map<String, Object?> _defaultMapTiles = <String, Object?>{
-    'url': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'attribution': '© OpenStreetMap contributors',
-    'maxZoom': 19,
+    'url':
+        'https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    'attribution': '© 高德地图',
+    'maxZoom': 18,
   };
   // B 站封面由 Dart 侧预取后注入（WebView 里的跨源 fetch 被 B 站风控 403）。
   final Map<String, String> _biliCovers = {};
