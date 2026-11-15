@@ -586,7 +586,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       case 'resize':
         final height = parsed.height;
         if (height == null || !height.isFinite) return;
-        debugPrint('diui resize: ${height} -> _height');
+        debugPrint('diui resize: $height -> _height');
         setState(() => _height = (height.ceil() + 8).clamp(100, _maxHeight).toInt());
         break;
       case 'error':
