@@ -52,6 +52,19 @@ jobs:
         run: |
           flutter pub get --enforce-lockfile
           printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+      - name: Provision CI signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_CI_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_CI_KEYSTORE_PASS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASS" ]; then
+            echo 'CI keystore secrets missing; falling back to the runner debug key' >&2
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > app/android/app/ci-release.jks
+          printf 'storeFile=ci-release.jks\nstorePassword=%s\nkeyAlias=dshgo\nkeyPassword=%s\n' \
+            "$KEYSTORE_PASS" "$KEYSTORE_PASS" > app/android/key.properties
       - name: Build arm64 APK
         run: |
           chmod +x tooling/build-apk.sh
