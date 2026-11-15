@@ -4219,7 +4219,7 @@ three/build/three.module.js:
 @container (max-width:560px){.diui-grid{grid-template-columns:repeat(min(2,var(--diui-cols)),minmax(0,1fr))}.diui-stack[data-direction=horizontal]{flex-wrap:wrap}.diui-stack[data-direction=horizontal]>*{flex-basis:100%}.diui-render{padding:10px}}
 @container (max-width:360px){.diui-grid{grid-template-columns:minmax(0,1fr)}}
 .diui-card{border:1px solid var(--ui-border);border-radius:var(--ui-radius);padding:6px 12px;background:var(--ui-surface);min-width:0}
-.diui-card-head{margin-bottom:8px}
+.diui-card-head{margin-bottom:4px}
 .diui-card-title{margin:0;font-size:15px}
 .diui-card-subtitle{margin:2px 0 0;color:var(--ui-muted);font-size:13px}
 .diui-card-foot{margin-top:10px;color:var(--ui-muted);font-size:12px}
@@ -4770,7 +4770,7 @@ svg,canvas,img,video{max-width:100%}
     h = Math.max(50, Math.min(MAX, h));
     if (h !== last) { last = h; post({ type: 'resize', height: h }); }
   }
-  new ResizeObserver(measure).observe(document.documentElement);
+  new ResizeObserver(measure).observe(document.getElementById('ui-root')||document.documentElement);
   window.addEventListener('load', measure);
   function run(code){
     finalized = true;
