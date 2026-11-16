@@ -308,6 +308,10 @@ class ChatTranscript {
   }
 
   /// Drops events hidden by a tool/result `surfaceOp: replace` record.
+  ///
+  /// 现状:真实线格式里 surfaceOp 只有字符串 'append',没有 startSeq/endSeq,
+  /// 所以下面的 Map 分支目前永不命中(替换裁剪由 projector 侧 ui_patch 完成)。
+  /// 等确认真实替换格式后再改这里,别按自造形状写测试。
   void _applySurfaceOp(SessionLogEvent event) {
     final op = event is ToolResultEvent ? event.surfaceOp : null;
     if (op is! Map || asString(op['op']) != 'replace') return;

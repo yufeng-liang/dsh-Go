@@ -33,3 +33,12 @@ site/build/
 
 # Release assets (tooling/release_assets.py)
 /dist/
+
+# 本地构建/截图产物(不进版本库)
+apk-dist-*/
+dist-intelligent-ui*/
+apk-final*/
+apk-review*/
+after-*.png
+*-session.jsonl
+dash_*.html

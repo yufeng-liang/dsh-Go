@@ -421,7 +421,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
               _setError(error.description);
             } else {
               // 子资源（图片/iframe）失败打日志：排查真机媒体加载问题靠它。
-              debugPrint('diui resource error: ${error.errorCode} ${error.description} ${error.url}');
+              if (kDebugMode) debugPrint('diui resource error: ${error.errorCode} ${error.description} ${error.url}');
             }
           },
         ),
@@ -429,7 +429,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       if (controller.platform case final AndroidWebViewController android) {
         // 诊断桥：把 WebView console 转进 logcat（发布前移除）。
         android.setOnConsoleMessage((message) {
-          debugPrint('diui console: ${message.message}');
+          if (kDebugMode) debugPrint('diui console: ${message.message}');
         });
         await android.setAllowFileAccess(false);
         await android.setAllowContentAccess(false);
@@ -495,7 +495,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     try {
       final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view?bvid=$bvid');
       final res = await http.get(uri).timeout(const Duration(seconds: 8));
-      debugPrint('diui bili prefetch: $bvid -> ${res.statusCode}');
+      if (kDebugMode) debugPrint('diui bili prefetch: $bvid -> ${res.statusCode}');
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         final data = body is Map ? body['data'] : null;
@@ -507,7 +507,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         }
       }
     } catch (err) {
-      debugPrint('diui bili prefetch failed: $bvid $err');
+      if (kDebugMode) debugPrint('diui bili prefetch failed: $bvid $err');
       // 封面预取失败静默，渲染器保留占位。
     } finally {
       _biliFetching.remove(bvid);
@@ -523,7 +523,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final covers =
         _biliCovers.isEmpty ? null : Map<String, String>.of(_biliCovers);
     if (covers != null) {
-      debugPrint('diui covers injected: ${covers.length}');
+      if (kDebugMode) debugPrint('diui covers injected: ${covers.length}');
     }
     final policy = <String, Object?>{
       if (rawPolicy is Map) ...rawPolicy.cast<String, Object?>(),
@@ -589,8 +589,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       case 'resize':
         final height = parsed.height;
         if (height == null || !height.isFinite) return;
-        debugPrint('diui resize: $height -> _height');
-        setState(() => _height = height.ceil().clamp(50, _maxHeight).toInt());
+        final next = height.ceil().clamp(50, _maxHeight).toInt();
+        if (kDebugMode) debugPrint('diui resize: $height -> $next');
+        // 1-2px 的回填不值得重建平台视图(否则每帧起一次 180ms 动画)。
+        if ((next - _height).abs() <= 2) return;
+        setState(() => _height = next);
         break;
       case 'error':
         _setError(parsed.data['message'] is String ? parsed.data['message'] as String : 'renderer error');

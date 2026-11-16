@@ -212,10 +212,12 @@ class IntelligentUiSnapshot {
       final kind = artifact['kind'];
       final uiId = artifact['uiId'];
       final version = artifact['version'];
-      return 'a:$kind:$uiId:$version:${identityHashCode(artifact['definition'])}';
+      final fingerprint = jsonEncode(artifact['definition'] ?? const <String, Object?>{});
+      return 'a:$kind:$uiId:$version:${fingerprint.length}:${fingerprint.hashCode}';
     }
     final widget = card.widget;
-    return 'w:${identityHashCode(widget)}:${card.title.hashCode}';
+    final widgetFingerprint = jsonEncode(widget ?? card.title);
+    return 'w:${card.title}:${widgetFingerprint.length}:${widgetFingerprint.hashCode}';
   }
 
   static Future<Uint8List?> _capture({
