@@ -54,6 +54,7 @@ import 'drawer_drag.dart';
 import 'quick_panel.dart';
 import 'session_search_page.dart' show showSessionSearch;
 import 'sessions_drawer.dart';
+import '../common/native_animation_surface.dart';
 import 'system_entry_host.dart';
 
 /// Home: the chat screen, with the sessions drawer pulled over it from the left.
@@ -539,7 +540,7 @@ class _SideParallax extends StatelessWidget {
       child: child,
       builder: (context, child) => Transform.translate(
         offset: Offset(fluid ? _share * (drawer.value * drawerWidth - quickPanel.value * quickPanelWidth) : 0, 0),
-        child: child,
+        child: NativeAnimationVisibility(visible: drawer.value == 0 && quickPanel.value == 0, child: child!),
       ),
     );
   }

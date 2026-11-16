@@ -10,10 +10,13 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../native_animation/native_animation_channel.dart';
 import '../../pets/pet_pack.dart';
 import '../../pets/pet_sheets.dart';
 import '../../pets/pet_state.dart';
+import '../common/native_animation_surface.dart';
 import '../theme/motion.dart';
+import 'pet_surface_motion.dart';
 
 /// Device pixels per art pixel for [size]: whole numbers, one apart at
 /// least, so the three presets always differ. 自定义 rounds [customHeight]
@@ -38,6 +41,23 @@ double petScale(PetPack pack, PetSize size, double devicePixelRatio, {double cus
     ? petDevicePixels(pack, size, devicePixelRatio, customHeight: customHeight) / devicePixelRatio
     : (size == PetSize.custom ? customHeight : size.bodyHeight) / pack.contentBox.height;
 
+/// The Surface must include art mirrored around the pack's foot anchor, which
+/// need not be the canvas centre (Deepy's anchor is deliberately off-centre).
+Rect petSurfaceBounds(PetPack pack, PetAnimation anim, double scale, {bool flip = false, PetSurfaceMotion? motion}) {
+  final canvas = Size(pack.canvas.width * scale, pack.canvas.height * scale);
+  final box = anim.box;
+  final painted = flip
+      ? Rect.fromLTRB(
+          (2 * pack.anchorX - box.right) * scale,
+          box.top * scale,
+          (2 * pack.anchorX - box.left) * scale,
+          box.bottom * scale,
+        )
+      : Rect.fromLTRB(box.left * scale, box.top * scale, box.right * scale, box.bottom * scale);
+  final bounds = (Offset.zero & canvas).expandToInclude(painted);
+  return motion?.envelope(canvas, paintedBounds: bounds) ?? bounds;
+}
+
 /// One animation of [pack], as big as the canvas × [scale].
 ///
 /// Loops when the animation loops; otherwise plays once, holds the last
@@ -58,6 +78,11 @@ class PetSprite extends StatefulWidget {
     this.bundle,
     this.still = false,
     this.paused = false,
+    this.nativeSurface = false,
+    this.surfaceMotion,
+    this.surfaceHitRect,
+    this.onSurfaceEvent,
+    this.onNativeActive,
   });
 
   final PetPack pack;
@@ -82,6 +107,14 @@ class PetSprite extends StatefulWidget {
   /// Freeze the current frame and its remaining delay while fully hidden.
   /// Unlike [still], this does not reset the frame or restart the animation.
   final bool paused;
+
+  /// The chat stage opts into an independent Android Surface; previews keep
+  /// Flutter painting so their scrolling/selection behavior stays unchanged.
+  final bool nativeSurface;
+  final PetSurfaceMotion? surfaceMotion;
+  final Rect? surfaceHitRect;
+  final ValueChanged<Map<String, Object?>>? onSurfaceEvent;
+  final ValueChanged<bool>? onNativeActive;
 
   @override
   State<PetSprite> createState() => PetSpriteState();
@@ -119,6 +152,16 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
     super.initState();
     _appVisible = _visibleIn(WidgetsBinding.instance.lifecycleState);
     WidgetsBinding.instance.addObserver(this);
+    NativeAnimationChannel.available.addListener(_nativeChanged);
+    if (widget.nativeSurface) unawaited(NativeAnimationChannel.ensureAvailable());
+  }
+
+  bool get _native => widget.nativeSurface && NativeAnimationChannel.available.value && widget.bundle == null;
+
+  void _nativeChanged() {
+    if (!mounted || !widget.nativeSurface) return;
+    setState(_start);
+    if (!_native) widget.onNativeActive?.call(false);
   }
 
   // Inactive views can still be visible (split screen, a system dialog).
@@ -132,7 +175,13 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final wasPaused = _paused;
     _appVisible = _visibleIn(state);
-    if (_paused != wasPaused) _pauseChanged();
+    if (_paused != wasPaused) {
+      if (_native) {
+        setState(() {});
+      } else {
+        _pauseChanged();
+      }
+    }
   }
 
   @override
@@ -155,7 +204,10 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(PetSprite oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.anim != widget.anim || oldWidget.pack != widget.pack || oldWidget.still != widget.still) {
+    if (oldWidget.anim != widget.anim ||
+        oldWidget.pack != widget.pack ||
+        oldWidget.still != widget.still ||
+        oldWidget.nativeSurface != widget.nativeSurface) {
       _start();
     } else if (oldWidget.paused != widget.paused) {
       _pauseChanged();
@@ -164,6 +216,7 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    NativeAnimationChannel.available.removeListener(_nativeChanged);
     WidgetsBinding.instance.removeObserver(this);
     _cancelTimer();
     _clock.stop();
@@ -178,6 +231,13 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
     _ended = false;
     final pack = widget.pack;
     final anim = widget.anim;
+    if (_native) {
+      _image?.dispose();
+      _image = null;
+      _shown = anim;
+      _frame = 0;
+      return;
+    }
     final ready = PetSheets.instance.peek(pack, anim);
     if (ready != null) {
       _show(anim, ready);
@@ -208,6 +268,7 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
 
   void _schedule() {
     _cancelTimer();
+    if (_native) return;
     final anim = _shown;
     if (anim == null || anim != widget.anim || _ended) return;
     if (_still) {
@@ -291,12 +352,87 @@ class PetSpriteState extends State<PetSprite> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final pack = widget.pack;
     final size = Size(pack.canvas.width * widget.scale, pack.canvas.height * widget.scale);
+    if (_native) return _nativeSprite(context);
     return ExcludeSemantics(
       child: SizedBox.fromSize(
         size: size,
         child: CustomPaint(
           painter: _SpritePainter(state: this, pack: pack, scale: widget.scale, flip: widget.flip, repaint: _repaint),
         ),
+      ),
+    );
+  }
+
+  Widget _nativeSprite(BuildContext context) {
+    final pack = widget.pack;
+    final anim = widget.anim;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final motion = widget.surfaceMotion;
+    final envelope = petSurfaceBounds(pack, anim, widget.scale, flip: widget.flip, motion: motion);
+    final origin = -envelope.topLeft;
+    final box = anim.box;
+    final hit = widget.surfaceHitRect;
+    final serial = _generation;
+    List<double> rect(Rect r) => [r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr];
+    return NativeAnimationSurface(
+      size: envelope.size,
+      config: {
+        'kind': 'sprite',
+        if (pack.dir case final dir?)
+          'path': '$dir/${anim.sheet}'
+        else
+          'asset': '${PetPack.folder(pack.id)}/${anim.sheet}',
+        'cellWidth': anim.frameWidth,
+        'cellHeight': anim.frameHeight,
+        'columns': anim.cols,
+        'frames': [
+          for (final frame in anim.frames) {'i': frame.i, 'ms': frame.ms},
+        ],
+        'loop': anim.loop,
+        'still': _still,
+        'endWhenStill': !widget.still,
+        'paused': _paused,
+        'flip': widget.flip,
+        'filter': pack.pixelArt ? 'nearest' : 'linear',
+        'anchorX': (origin.dx + pack.anchorX * widget.scale) * dpr,
+        'dst': rect(
+          Rect.fromLTWH(
+            origin.dx + box.left * widget.scale,
+            origin.dy + box.top * widget.scale,
+            box.width * widget.scale,
+            box.height * widget.scale,
+          ),
+        ),
+        'contentOrigin': [origin.dx * dpr, origin.dy * dpr],
+        if (hit != null) 'hitRect': rect(hit.shift(origin)),
+        'motion': motion?.toConfig(dpr),
+        'playbackSerial': serial,
+      },
+      onEvent: (event) {
+        if (!mounted) return;
+        if (event['type'] == 'ready' && event['playbackSerial'] == serial) {
+          widget.onNativeActive?.call(true);
+          widget.onShown?.call();
+        } else if (event['type'] == 'ended' && event['playbackSerial'] == serial) {
+          _end();
+        } else if (event['type'] == 'error') {
+          widget.onNativeActive?.call(false);
+        }
+        widget.onSurfaceEvent?.call(event);
+      },
+      fallback: (_) => PetSprite(
+        pack: pack,
+        anim: anim,
+        scale: widget.scale,
+        flip: widget.flip,
+        still: widget.still,
+        paused: widget.paused,
+        bundle: widget.bundle,
+        onEnd: widget.onEnd,
+        onShown: () {
+          widget.onNativeActive?.call(false);
+          widget.onShown?.call();
+        },
       ),
     );
   }

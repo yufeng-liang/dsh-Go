@@ -31,6 +31,7 @@ import java.util.TimeZone
 
 class MainActivity : FlutterActivity() {
     private var appChannel: MethodChannel? = null
+    private var nativeAnimations: io.github.ccch1mneyyy.dsh_app.nativeanimation.NativeAnimationHost? = null
 
     /**
      * One engine per process, outliving this activity: swiping the app away from recents keeps
@@ -118,6 +119,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        nativeAnimations?.resume()
         io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundControl.get(applicationContext).restoreKeptChannel()
         inForeground = true
         // Coming back counts as activity: the first frames may not be scheduled yet.
@@ -154,6 +156,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onPause() {
+        nativeAnimations?.pause()
         inForeground = false
         framesActive = false
         applyRefreshRate()
@@ -163,6 +166,7 @@ class MainActivity : FlutterActivity() {
     /** Per activity: the handler acts on this activity, so it goes with it (see [cleanUpFlutterEngine]). */
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        nativeAnimations = io.github.ccch1mneyyy.dsh_app.nativeanimation.NativeAnimationHost(this, flutterEngine.dartExecutor.binaryMessenger)
         appChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dsh/app")
         appChannel!!.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -203,6 +207,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        nativeAnimations?.close()
+        nativeAnimations = null
         appChannel?.setMethodCallHandler(null)
         appChannel = null
         super.cleanUpFlutterEngine(flutterEngine)

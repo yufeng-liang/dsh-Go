@@ -6,6 +6,7 @@
 import 'dart:async';
 
 import 'package:dsh_app/l10n/l10n.dart';
+import 'package:dsh_app/native_animation/native_animation_channel.dart';
 import 'package:dsh_app/performance/performance_state.dart';
 import 'package:dsh_app/pets/pet_sheets.dart';
 import 'package:dsh_app/state/locale_state.dart';
@@ -18,6 +19,10 @@ import 'support/test_fonts.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   await loadTestFonts();
+  // Widget tests have no Android surfaces. Resolve this before the first pump,
+  // so Flutter fallbacks start on the same frame as their original controls.
+  NativeAnimationChannel.queryAvailability = () async => false;
+  await NativeAnimationChannel.ensureAvailable();
   // The chat page's pet is drawn only where a test asks for it
   // (test/pets/): elsewhere a sheet decoding in a stray real-async window
   // would make screens flicker between with and without a pet.

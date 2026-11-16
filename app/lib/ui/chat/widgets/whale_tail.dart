@@ -9,6 +9,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../common/native_animation_surface.dart';
+
 /// DeepSeek 官方蓝。浅色玻璃上约 3.9–4.3:1(图形的 3:1 线以上)。
 const deepSeekBlue = Color(0xFF4D6BFE);
 
@@ -114,7 +116,14 @@ abstract final class WhaleSprites {
 /// [still] 时(空状态的品牌图形)画静止的那一帧;系统关闭动画时也是。
 /// 精灵图是白色 + alpha 的蒙版,画的时候用 [color] 上色。
 class WhaleTail extends StatefulWidget {
-  const WhaleTail({super.key, this.level = 1, required this.color, this.height = 20, this.still = false});
+  const WhaleTail({
+    super.key,
+    this.level = 1,
+    required this.color,
+    this.height = 20,
+    this.still = false,
+    this.nativeAnimation = false,
+  });
 
   final int level;
   final Color color;
@@ -125,11 +134,66 @@ class WhaleTail extends StatefulWidget {
   /// 不动:静止的那一帧,没有计时器。
   final bool still;
 
+  /// The activity strip opts into the independent Android drawing surface.
+  final bool nativeAnimation;
+
   @override
   State<WhaleTail> createState() => WhaleTailState();
 }
 
-class WhaleTailState extends State<WhaleTail> with SingleTickerProviderStateMixin {
+class WhaleTailState extends State<WhaleTail> {
+  final _flutter = GlobalKey<_FlutterWhaleTailState>();
+
+  @visibleForTesting
+  int get shownForm =>
+      _flutter.currentState?.shownForm ?? (widget.still ? 1 : _FlutterWhaleTailState.formOf(widget.level));
+
+  @visibleForTesting
+  double get rate => _flutter.currentState?.rate ?? _FlutterWhaleTailState.rateOf(widget.level);
+
+  @visibleForTesting
+  int get frame => _flutter.currentState?.frame ?? 0;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget fallback(BuildContext context) => _FlutterWhaleTail(
+      key: _flutter,
+      level: widget.level,
+      color: widget.color,
+      height: widget.height,
+      still: widget.still,
+    );
+    if (!widget.nativeAnimation || widget.still || (MediaQuery.maybeDisableAnimationsOf(context) ?? false)) {
+      return fallback(context);
+    }
+    return ExcludeSemantics(
+      child: NativeAnimationSurface(
+        size: Size(widget.height * WhaleSprites.aspect, widget.height),
+        config: {'kind': 'whale', 'level': widget.level, 'color': widget.color.toARGB32()},
+        fallback: fallback,
+      ),
+    );
+  }
+}
+
+class _FlutterWhaleTail extends StatefulWidget {
+  const _FlutterWhaleTail({
+    super.key,
+    required this.level,
+    required this.color,
+    required this.height,
+    required this.still,
+  });
+  final int level;
+  final Color color;
+  final double height;
+  final bool still;
+
+  @override
+  State<_FlutterWhaleTail> createState() => _FlutterWhaleTailState();
+}
+
+class _FlutterWhaleTailState extends State<_FlutterWhaleTail> with SingleTickerProviderStateMixin {
   late final Ticker _ticker = createTicker(_onTick);
   final _repaint = ValueNotifier<int>(0);
   WhaleAtlas? _atlas = WhaleSprites.cached;
@@ -182,7 +246,7 @@ class WhaleTailState extends State<WhaleTail> with SingleTickerProviderStateMixi
   }
 
   @override
-  void didUpdateWidget(WhaleTail oldWidget) {
+  void didUpdateWidget(_FlutterWhaleTail oldWidget) {
     super.didUpdateWidget(oldWidget);
     final form = formOf(widget.level);
     if (form != _form) {
@@ -283,7 +347,7 @@ class _WhalePainter extends CustomPainter {
     : super(repaint: repaint);
 
   final WhaleAtlas atlas;
-  final WhaleTailState state;
+  final _FlutterWhaleTailState state;
   final Color color;
 
   @override

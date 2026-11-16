@@ -39,6 +39,7 @@ import 'pet_bubble.dart';
 import 'pet_menu.dart';
 import 'pet_perch.dart';
 import 'pet_sprite.dart';
+import 'pet_surface_motion.dart';
 
 /// Geometry and timing shared with the tests.
 abstract final class PetMetrics {
@@ -338,6 +339,12 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
   final List<DateTime> _taps = [];
   bool _ready = false;
   bool _bodyFullyHidden = true;
+
+  /// Native drawing/finite movement becomes active after its sheet is decoded.
+  /// Missing-plugin widget tests keep the existing Flutter movement path.
+  bool _nativeReady = false;
+  PetSurfaceMotion? _surfaceMotion;
+  int _motionSerial = 0;
   PetStateName? _lastState;
   PetPack? _statePack;
   PetPack? _pinned;
@@ -351,7 +358,7 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
   PerchKind? get perch => _spot?.kind;
 
   @visibleForTesting
-  bool get hopping => _hop.isAnimating;
+  bool get hopping => _hop.isAnimating || _surfaceMotion?.kind == 'hop';
 
   @visibleForTesting
   bool get walking => _walking;
@@ -410,6 +417,110 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
 
   void _tick() => setState(() {});
 
+  bool get _nativeMovement =>
+      _nativeReady &&
+      !_reduced &&
+      !MediaQuery.accessibleNavigationOf(context) &&
+      ref.read(petScopedStateProvider(_scope)).bubble == null;
+
+  double get _walkProgress => _surfaceMotion?.kind == 'walk' ? _surfaceMotion!.progress : _walk.value;
+
+  void _nativeActive(bool active) {
+    if (_nativeReady == active || !mounted) return;
+    setState(() => _nativeReady = active);
+    if (!active) _resumeSurfaceMotionInFlutter();
+  }
+
+  void _finishSurfaceMotion(int serial) {
+    final motion = _surfaceMotion;
+    if (motion == null || motion.serial != serial) return;
+    setState(() => _surfaceMotion = null);
+    switch (motion.kind) {
+      case 'walk':
+        _walked(AnimationStatus.completed);
+      case 'hop':
+        _hop.value = 1;
+      case 'drop':
+        _drop.value = 1;
+    }
+  }
+
+  void _surfaceEvent(Map<String, Object?> event) {
+    if (!mounted) return;
+    if (event['type'] == 'reset') {
+      // A cached Flutter engine can outlive its Activity/Surface nodes. A new
+      // node must not replay the already-running finite movement from its start.
+      final motion = _surfaceMotion;
+      if (motion != null) _finishSurfaceMotion(motion.serial);
+      return;
+    }
+    if (event['type'] == 'motionClock') {
+      final motion = _surfaceMotion;
+      if (motion != null && event['serial'] == motion.serial) {
+        motion.synchronize(
+          Duration(milliseconds: (event['elapsedMs'] as num).toInt()),
+          active: event['active'] == true,
+        );
+      }
+      return;
+    }
+    if (event['type'] == 'motionEnd') {
+      _finishSurfaceMotion((event['serial'] as num).toInt());
+      return;
+    }
+    final dpr = _dpr;
+    double value(String name) => ((event[name] as num?)?.toDouble() ?? 0) / dpr;
+    final local = Offset(value('localX'), value('localY'));
+    final global = Offset(value('globalX'), value('globalY'));
+    switch (event['type']) {
+      case 'tap':
+        _onTapUp(TapUpDetails(localPosition: local, globalPosition: global, kind: PointerDeviceKind.touch));
+      case 'longPress':
+        unawaited(_menu());
+      case 'dragStart':
+        _onDragStart(
+          DragStartDetails(localPosition: local, globalPosition: global, kind: PointerDeviceKind.touch),
+          native: true,
+        );
+      case 'dragUpdate':
+        _onDragUpdate(
+          DragUpdateDetails(
+            localPosition: local,
+            globalPosition: global,
+            delta: Offset(value('deltaX'), value('deltaY')),
+          ),
+        );
+      case 'dragEnd':
+        _onDragEnd(DragEndDetails(velocity: Velocity(pixelsPerSecond: Offset(value('velocityX'), value('velocityY')))));
+      case 'cancel':
+        _onDragEnd();
+    }
+  }
+
+  /// A bubble needs to follow the body for this short transition. Its Flutter
+  /// layout is already active, so finish that finite movement with Flutter.
+  void _resumeSurfaceMotionInFlutter() {
+    final motion = _surfaceMotion;
+    if (motion == null || !mounted) return;
+    if (_reduced) {
+      _finishSurfaceMotion(motion.serial);
+      return;
+    }
+    final t = motion.progress;
+    setState(() => _surfaceMotion = null);
+    switch (motion.kind) {
+      case 'walk':
+        _walk.duration = motion.duration;
+        unawaited(_walk.forward(from: t));
+      case 'hop':
+        _hop.duration = motion.duration;
+        unawaited(_hop.forward(from: t));
+      case 'drop':
+        _drop.duration = motion.duration;
+        unawaited(_drop.forward(from: t));
+    }
+  }
+
   DateTime get _now => ref.read(petClockProvider)();
 
   // ── Geometry ───────────────────────────────────────────────────────────────
@@ -454,6 +565,11 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
         (global - _stageGlobal).distance > 0.01 ||
         covered != _covered ||
         !_sameRects(avoid, _avoid);
+    if (!moved && changed && _surfaceMotion?.kind == 'walk') {
+      // Layout is already producing Flutter frames (rotation/keyboard/avoid
+      // areas). Its existing share-based movement follows the resized perch.
+      _resumeSurfaceMotionInFlutter();
+    }
     if (moved && top != null && old != null && _lastFoot != null) {
       // Hop from where it stood to the new perch.
       _spot = top;
@@ -462,7 +578,21 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
         _hop.value = 1;
       } else {
         _hop.duration = PetMetrics.hop;
-        unawaited(_hop.forward(from: 0));
+        if (_nativeMovement) {
+          if (_surfaceMotion?.kind == 'walk') {
+            _roamed = _walkFrom + (_walkTo - _walkFrom) * _walkProgress;
+            _walking = false;
+          }
+          _surfaceMotion = PetSurfaceMotion(
+            serial: ++_motionSerial,
+            kind: 'hop',
+            duration: PetMetrics.hop,
+            from: _hopFrom,
+            height: PetMetrics.hopHeight,
+          );
+        } else {
+          unawaited(_hop.forward(from: 0));
+        }
       }
     }
     if (changed) {
@@ -559,7 +689,7 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
     final (lo, hi) = _range(spot);
     if (_dragging) return _dragFoot.clamp(lo, hi);
     final prefs = ref.read(petPrefsProvider);
-    final share = _walking ? _walkFrom + (_walkTo - _walkFrom) * _walk.value : (_roamed ?? prefs.position);
+    final share = _walking ? _walkFrom + (_walkTo - _walkFrom) * _walkProgress : (_roamed ?? prefs.position);
     return _clear(spot, (share * spot.rect.width).clamp(lo, hi));
   }
 
@@ -588,8 +718,9 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
       _idleTimer?.cancel();
       _roamTimer?.cancel();
       if (_walking) {
-        _roamed = _walkFrom + (_walkTo - _walkFrom) * _walk.value;
+        _roamed = _walkFrom + (_walkTo - _walkFrom) * _walkProgress;
         _walk.stop();
+        if (_surfaceMotion?.kind == 'walk') _surfaceMotion = null;
         _walking = false;
       }
     }
@@ -708,7 +839,18 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
       _variant = null;
     });
     _walk.duration = Duration(milliseconds: (distance / PetMetrics.walkSpeed * 1000).round());
-    unawaited(_walk.forward(from: 0));
+    if (_nativeMovement) {
+      setState(
+        () => _surfaceMotion = PetSurfaceMotion(
+          serial: ++_motionSerial,
+          kind: 'walk',
+          duration: _walk.duration!,
+          from: Offset(startX - endX, 0),
+        ),
+      );
+    } else {
+      unawaited(_walk.forward(from: 0));
+    }
   }
 
   void _walked(AnimationStatus status) {
@@ -782,7 +924,7 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
     _play(pack.reactionOutOf(left ? 'tapLeft' : 'tapRight', PetLayer.random));
   }
 
-  void _onDragStart(DragStartDetails details) {
+  void _onDragStart(DragStartDetails details, {bool native = false}) {
     final spot = _spot;
     if (spot == null) return;
     HapticFeedback.selectionClick();
@@ -790,14 +932,27 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
     _roamTimer?.cancel();
     _idleTimer?.cancel();
     _walk.stop();
+    final motion = _surfaceMotion;
+    final movement = motion?.offset ?? Offset.zero;
+    // The Android event reports the current displayed canvas, avoiding channel
+    // latency between Dart's finite clock and the renderer's clock.
+    final visualFoot = native
+        ? details.globalPosition -
+              details.localPosition +
+              Offset(_pack!.anchorX * _scale, _pack!.baseline * _scale) -
+              _stageGlobal -
+              spot.rect.topLeft
+        : null;
     setState(() {
-      _dragFoot = _footX(spot);
+      _dragFoot = visualFoot?.dx ?? (_footX(spot) + (motion?.kind == 'hop' ? movement.dx : 0));
+      _surfaceMotion = null;
+      if (motion?.kind == 'hop') _hop.value = 1;
       _dragging = true;
       _walking = false;
       _roamed = null;
       _variant = null;
       _clearReaction();
-      _lift = -PetMetrics.dragLift;
+      _lift = -PetMetrics.dragLift + (visualFoot?.dy ?? (motion?.kind == 'walk' ? 0 : movement.dy));
       _drop.value = 1;
     });
   }
@@ -829,7 +984,18 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
       _drop.value = 1;
     } else {
       _drop.duration = drop;
-      unawaited(_drop.forward(from: 0));
+      if (_nativeMovement) {
+        setState(
+          () => _surfaceMotion = PetSurfaceMotion(
+            serial: ++_motionSerial,
+            kind: 'drop',
+            duration: drop,
+            from: Offset(0, _dropFrom),
+          ),
+        );
+      } else {
+        unawaited(_drop.forward(from: 0));
+      }
     }
     if (_lastState == PetStateName.idle) _armIdle();
   }
@@ -877,24 +1043,38 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
       _bodyFullyHidden = true;
       return const SizedBox.expand();
     }
+    if (_surfaceMotion != null &&
+        (!_nativeReady || _reduced || MediaQuery.accessibleNavigationOf(context) || pet.bubble != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resumeSurfaceMotionInFlutter());
+    }
     final s = _scale;
     final visible = _visible;
     final canvas = Size(pack.canvas.width * s, pack.canvas.height * s);
-    final footX = _footX(spot);
+    final motion = _surfaceMotion;
+    final footX = motion?.kind == 'walk' ? _clear(spot, _walkTo * spot.rect.width) : _footX(spot);
 
     // Hop: from the old foot point to the new along an arc.
-    final t = _hop.value;
+    final t = motion?.kind == 'hop' ? 1.0 : _hop.value;
     final eased = Curves.easeInOut.transform(t);
     final hop = _hopFrom * (1 - eased) + Offset(0, t < 1 ? -PetMetrics.hopHeight * 4 * t * (1 - t) : 0);
-    final lift = _dragging ? _lift : _dropFrom * (1 - Curves.easeIn.transform(_drop.value));
+    final lift = _dragging
+        ? _lift
+        : motion?.kind == 'drop'
+        ? 0.0
+        : _dropFrom * (1 - Curves.easeIn.transform(_drop.value));
     var origin = Offset(footX - pack.anchorX * s, -pack.baseline * s) + hop + Offset(0, lift);
-    if (!_dragging && !_hop.isAnimating && !_walking && !_drop.isAnimating) origin = _snap(spot, origin);
+    if (!_dragging && !_hop.isAnimating && !_walking && !_drop.isAnimating && motion == null) {
+      origin = _snap(spot, origin);
+    }
 
     final anim = _dragging
         ? (pack.reaction('drag') ?? pack.animFor(pet.state, tier: pet.tier))
         : _reaction ?? (_walking ? pack.roam : null) ?? _variant ?? pack.animFor(pet.state, tier: pet.tier);
     _anim = anim;
     final flip = _walking && pack.mirrorWalking(right: _walkRight);
+    final envelope = _nativeReady
+        ? petSurfaceBounds(pack, anim, s, flip: flip, motion: motion)
+        : (Offset.zero & canvas);
 
     // Only the body takes touches: the animation's hit box, never below the
     // foot line (the capsule under it keeps its taps).
@@ -917,7 +1097,7 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
     final body = CompositedTransformFollower(
       link: spot.link,
       showWhenUnlinked: false,
-      offset: origin,
+      offset: origin + envelope.topLeft,
       child: IgnorePointer(
         ignoring: !shown,
         child: AnimatedOpacity(
@@ -947,17 +1127,25 @@ class PetLayerState extends ConsumerState<PetLayer> with TickerProviderStateMixi
               onPanEnd: _onDragEnd,
               onPanCancel: _onDragEnd,
               child: _HitRect(
-                rect: hitRect,
+                rect: hitRect.shift(-envelope.topLeft),
+                // Native hit testing follows the moving art. Retaining the
+                // Flutter target would also make its future endpoint tappable.
+                acceptPointer: !_nativeReady || MediaQuery.accessibleNavigationOf(context),
                 child: RepaintBoundary(
                   child: SizedBox.fromSize(
                     key: const ValueKey('pet-body'),
-                    size: canvas,
+                    size: envelope.size,
                     child: PetSprite(
                       pack: pack,
                       anim: anim,
                       scale: s,
                       flip: flip,
                       paused: pauseSprite,
+                      nativeSurface: true,
+                      surfaceMotion: motion,
+                      surfaceHitRect: hitRect,
+                      onSurfaceEvent: _surfaceEvent,
+                      onNativeActive: _nativeActive,
                       onShown: () {
                         if (_ready) return;
                         // Shown during a frame: ready right after it.
@@ -1069,25 +1257,31 @@ class _Swipe extends StatelessWidget {
 
 /// Takes touches only inside [rect].
 class _HitRect extends SingleChildRenderObjectWidget {
-  const _HitRect({required this.rect, super.child});
+  const _HitRect({required this.rect, this.acceptPointer = true, super.child});
 
   final Rect rect;
+  final bool acceptPointer;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderHitRect(rect);
+  RenderObject createRenderObject(BuildContext context) => _RenderHitRect(rect, acceptPointer);
 
   @override
-  void updateRenderObject(BuildContext context, _RenderHitRect renderObject) => renderObject.rect = rect;
+  void updateRenderObject(BuildContext context, _RenderHitRect renderObject) {
+    renderObject
+      ..rect = rect
+      ..acceptPointer = acceptPointer;
+  }
 }
 
 class _RenderHitRect extends RenderProxyBox {
-  _RenderHitRect(this.rect);
+  _RenderHitRect(this.rect, this.acceptPointer);
 
   Rect rect;
+  bool acceptPointer;
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    if (!rect.contains(position)) return false;
+    if (!acceptPointer || !rect.contains(position)) return false;
     result.add(BoxHitTestEntry(this, position));
     return true;
   }
