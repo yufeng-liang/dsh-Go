@@ -806,7 +806,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
                 padding: EdgeInsets.zero,
                 style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-                icon: const Icon(Icons.fullscreen, size: 20),
+                icon: const Icon(AppIcons.fullscreen, size: 20),
               )
             : null,
         children: [cardBody],
@@ -894,7 +894,7 @@ class _ImmersiveCard extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                       tooltip: context.l10n.activityStepFullScreen,
-                      icon: const Icon(Icons.fullscreen, size: 18),
+                      icon: const Icon(AppIcons.fullscreen, size: 18),
                     ),
                   ),
               ],

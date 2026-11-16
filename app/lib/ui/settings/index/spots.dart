@@ -68,7 +68,6 @@ enum SettingsPageId {
   replyPrefs,
   agentPresets,
   phone,
-  androidShell,
   phoneAppRules,
   phoneAlwaysAllow,
   phoneAndroidShell,
@@ -446,13 +445,6 @@ final _pages = <SettingsPageMeta>[
     freq: Freq.low,
     links: const ['linux'],
     ohosOnly: true,
-  ),
-  SettingsPageMeta(
-    SettingsPageId.androidShell,
-    title: (l) => l.androidShellTitle,
-    parent: SettingsPageId.phone,
-    keywords: (l) => l.searchKwShell,
-    condition: SpotCondition.phoneControlOn,
   ),
   SettingsPageMeta(
     SettingsPageId.phoneAppRules,

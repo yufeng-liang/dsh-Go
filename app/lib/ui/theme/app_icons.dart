@@ -34,6 +34,10 @@ abstract final class AppIcons {
   static const openWith = DshGlyphs.dotsNine;
   static const allFeatures = DshGlyphs.dotsNine;
   static const browser = DshGlyphs.browser;
+
+  /// 卡片右上角「全屏查看」。字体子集暂无四角外扩形,先复用外链字形;
+  /// 以后补了字形改这一行即可。
+  static const fullscreen = DshGlyphs.arrowSquareOut;
   static const scrollToBottom = DshGlyphs.arrowDown;
   static const scrollToTop = DshGlyphs.arrowUp;
   static const sidebar = DshGlyphs.sidebarSimpleRight;
