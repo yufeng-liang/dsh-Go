@@ -4172,7 +4172,7 @@ three/build/three.module.js:
 .diui-problem{padding:10px 12px;color:var(--ui-muted);display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
 .diui-problem-detail{flex-basis:100%;margin:0;white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;background:var(--ui-surface);padding:8px;border-radius:var(--ui-radius)}
 .diui-link{border:0;background:none;color:var(--ui-accent);cursor:pointer;padding:0;font:inherit}
-.diui-render{padding:0 14px 14px;display:flex;flex-direction:column;gap:12px}.diui-render>:first-child{margin-top:0}.diui-render>:last-child{margin-bottom:0}
+.diui-render{padding:4px 14px 14px;display:flex;flex-direction:column;gap:12px}.diui-render>:first-child{margin-top:0}.diui-render>:last-child{margin-bottom:0}
 .diui-render>.diui-card:only-child{border:0;padding:0;background:transparent}
 .diui-stack{display:flex;flex-direction:column;min-width:0}
 .diui-stack[data-direction=horizontal]{flex-direction:row}
