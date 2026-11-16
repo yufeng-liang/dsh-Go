@@ -98,6 +98,12 @@ class PortableUiAdapter {
   /// 单张卡片的 HTML 上限：超了就整张放弃，不出半张卡。
   static const _maxHtmlChars = 60000;
 
+  /// 卡片标题上限：超长标题会把卡头挤出可视区。
+  static const _maxTitleChars = 200;
+
+  /// 单元格上限：防止单个超长单元格撑爆表格。
+  static const _maxCellChars = 2000;
+
   /// structured 表格的截断口径。
   static const _maxTableRows = 50;
   static const _maxTableColumns = 12;
@@ -241,6 +247,14 @@ class PortableUiAdapter {
     );
   }
 
+  /// 标题统一收口：去空白、空串归一为 null、超长按上限截断。
+  static String? _clipTitle(String? value) {
+    final title = value?.trim();
+    if (title == null || title.isEmpty) return null;
+    if (title.length <= _maxTitleChars) return title;
+    return '${title.substring(0, _maxTitleChars - 1)}…';
+  }
+
   /// 统一产物：widget 卡，uiId 用调用 id，definition 必须过 widget 校验。
   static IntelligentUiArtifact? _artifact(
     String callId,
@@ -261,7 +275,7 @@ class PortableUiAdapter {
       version: 1,
       definition: definition,
       seq: seq,
-      title: title,
+      title: _clipTitle(title),
       policy: policy,
       originSeq: originSeq,
     );
@@ -276,10 +290,11 @@ class PortableUiAdapter {
   /// 插件给的 HTML 片段：必须是非空字符串、不含 script 标签、不超长度上限，
   /// 且一律先摘掉 on*= 事件属性与 javascript: 再交给 WebView。
   static String? _htmlOf(Object? value) {
-    if (value is! String || value.trim().isEmpty) return null;
-    if (value.trim().length > _maxHtmlChars) return null;
-    if (_script.hasMatch(value)) return null;
-    return _sanitizeWidgetHtml(value);
+    if (value is! String) return null;
+    final html = value.trim();
+    if (html.isEmpty || html.length > _maxHtmlChars) return null;
+    if (_script.hasMatch(html)) return null;
+    return _sanitizeWidgetHtml(html);
   }
 
   static Map<String, Object?>? _htmlDefinition(Map<String, Object?> map) {
@@ -542,14 +557,18 @@ class PortableUiAdapter {
 
   static String _text(String value) => _escape.convert(value);
 
-  /// 单元格 / 数值统一转文本；对象和数组不做渲染。
-  static String? _cellText(Object? value) => switch (value) {
-    null => null,
-    final String text => text,
-    final num number => '$number',
-    final bool flag => '$flag',
-    _ => null,
-  };
+  /// 单元格 / 数值统一转文本；对象和数组不做渲染，超长内容按上限截断。
+  static String? _cellText(Object? value) {
+    final text = switch (value) {
+      null => null,
+      final String text => text,
+      final num number => '$number',
+      final bool flag => '$flag',
+      _ => null,
+    };
+    if (text == null || text.length <= _maxCellChars) return text;
+    return '${text.substring(0, _maxCellChars - 1)}…';
+  }
 
   /// metrics 的 trend 只认 up / down / flat，其余按无趋势处理。
   static String? _trend(Object? value) {
@@ -1020,9 +1039,29 @@ class IntelligentUiProjector {
   }
 }
 
+/// 危险标签：卡片 HTML 用不到，但能改写相对 URL 基准（base）或触发自动跳转（meta）。
+final _dangerTag = RegExp(
+  r'<\s*/?\s*(?:meta|base|link|object|embed|iframe|frame|frameset)\b[^>]*>',
+  caseSensitive: false,
+);
+
+/// 事件属性：前导也可以是 `/`，HTML 允许 `<img/src=x/onerror=…>` 这种写法。
+final _eventAttr = RegExp(
+  r'''(?:^|[\s/])on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''',
+  caseSensitive: false,
+);
+
+/// 脚本型伪协议：编码变体与空白穿插交给 CSP（没有 unsafe-inline）兜底。
+final _scriptScheme = RegExp(r'(?:javascript|vbscript)\s*:', caseSensitive: false);
+
+/// data:text/html 会把片段变成独立页面。
+final _dataHtmlScheme = RegExp(r'data\s*:\s*text/html', caseSensitive: false);
+
 String _sanitizeWidgetHtml(String html) {
-  var out = html.replaceAll(RegExp(r'''\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''', caseSensitive: false), ' ');
-  out = out.replaceAll(RegExp(r'javascript:', caseSensitive: false), '');
+  var out = html.replaceAll(_dangerTag, '');
+  out = out.replaceAll(_eventAttr, ' ');
+  out = out.replaceAll(_scriptScheme, '');
+  out = out.replaceAll(_dataHtmlScheme, '');
   return out;
 }
 

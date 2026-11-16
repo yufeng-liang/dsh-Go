@@ -474,6 +474,79 @@ void main() {
       expect(html, isNot(contains('v0-11')));
     });
 
+    test('strips event attributes and script schemes from a fragment', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'fragment',
+          'html': '<div onclick="steal()">x</div>'
+              '<a href="javascript:go()">y</a>'
+              '<img/src=x/onerror="steal()">',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains('onclick')));
+      expect(html, isNot(contains('onerror')));
+      expect(html, isNot(contains('javascript:')));
+      expect(html, contains('<div'));
+    });
+
+    test('drops tags that can rebase urls or self-navigate', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'fragment',
+          'html': '<base href="https://evil.test/"><meta http-equiv="refresh" content="0;url=https://evil.test">'
+              '<iframe srcdoc="x"></iframe><object data="x"></object><p>ok</p>',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains('<base')));
+      expect(html, isNot(contains('<meta')));
+      expect(html, isNot(contains('<iframe')));
+      expect(html, isNot(contains('<object')));
+      expect(html, contains('<p>ok</p>'));
+    });
+
+    test('clips an over long card title', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'card': {'title': List<String>.filled(400, 'A').join()}}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.title!.length, 200);
+      expect(artifact.title!.endsWith('…'), isTrue);
+    });
+
+    test('truncates an over long table cell', () {
+      final long = List<String>.filled(3000, 'B').join();
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'tables': [
+              {
+                'columns': ['only'],
+                'rows': [
+                  [long],
+                ],
+              },
+            ],
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains(long)));
+      expect(html, contains('${List<String>.filled(1999, 'B').join()}…'));
+    });
+
     test('returns null when there is nothing to render', () {
       // 结构化数据一个字段都没有
       expect(PortableUiAdapter.fromTool(item({'dsh-go/portable': {'kind': 'structured'}})), isNull);
