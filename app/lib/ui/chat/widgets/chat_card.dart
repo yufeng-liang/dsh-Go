@@ -41,6 +41,7 @@ class ChatCard extends StatelessWidget {
     this.trailing,
     this.tone = ChatCardTone.neutral,
     this.titleMaxLines = 1,
+    this.headerPadding,
   });
 
   final IconData icon;
@@ -49,6 +50,9 @@ class ChatCard extends StatelessWidget {
   final ChatCardTone tone;
   final List<Widget> children;
   final int titleMaxLines;
+
+  /// 标题行留白;不传时用默认 上 16 / 下 8。智能 UI 卡要更紧凑。
+  final EdgeInsetsGeometry? headerPadding;
 
   /// 卡片四周与标题行的留白。
   static const inset = 16.0;
@@ -85,7 +89,7 @@ class ChatCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(inset, inset, inset, 8),
+              padding: headerPadding ?? const EdgeInsets.fromLTRB(inset, inset, inset, 8),
               child: Row(
                 crossAxisAlignment: titleMaxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                 children: [

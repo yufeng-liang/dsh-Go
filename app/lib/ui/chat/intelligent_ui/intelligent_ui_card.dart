@@ -252,6 +252,9 @@ class IntelligentUiCardPlaceholder extends StatelessWidget {
   }
 }
 
+/// 智能 UI 卡的标题行留白:比普通卡紧凑(默认上 16 / 下 8 → 上 8 / 下 4)。
+const EdgeInsets _compactHeaderPadding = EdgeInsets.fromLTRB(ChatCard.inset, 8, ChatCard.inset, 4);
+
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({
     super.key,
@@ -736,7 +739,12 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
           ),
         );
       }
-      return ChatCard(icon: AppIcons.generating, title: semanticTitle, children: [nativePreview]);
+      return ChatCard(
+        icon: AppIcons.generating,
+        title: semanticTitle,
+        headerPadding: _compactHeaderPadding,
+        children: [nativePreview],
+      );
     }
     final child = _gone
         ? _Unavailable(
@@ -785,10 +793,15 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       child: ChatCard(
         icon: AppIcons.generating,
         title: semanticTitle,
+        headerPadding: _compactHeaderPadding,
         trailing: widget.allowFullscreen
             ? IconButton(
                 onPressed: _openFullscreen,
                 tooltip: l10n.activityStepFullScreen,
+                // 默认 48dp 触控盒会把标题行撑高,留白看起来很大;压到 32dp。
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                 icon: const Icon(Icons.fullscreen, size: 20),
               )
             : null,
