@@ -269,6 +269,457 @@ void main() {
         isNull,
       );
     });
+
+    test('adapts a bare html meta to a widget artifact', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'html': '<p>plain html</p>'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, IntelligentUiKind.widget);
+      expect(artifact.definition['html'], contains('<p>plain html</p>'));
+      expect(artifact.definition['initialHeight'], 48);
+      expect(artifact.uiId, 'call-portable');
+      expect(artifact.version, 1);
+      expect(artifact.seq, 9);
+      expect(artifact.originSeq, 9);
+    });
+
+    test('adapts a meta.widget html with css and title', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'widget': {
+            'html': '<div class="w">widget body</div>',
+            'css': '.w{color:#123456}',
+            'title': 'Widget title',
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('<div class="w">widget body</div>'));
+      expect(artifact.definition['css'], '.w{color:#123456}');
+      expect(artifact.title, 'Widget title');
+    });
+
+    test('adapts a meta.fragment as html', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'fragment': '<section>fragment body</section>'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('<section>fragment body</section>'));
+    });
+
+    test('renders a meta.card structured payload', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'title': 'Card title',
+            'fields': [
+              {'label': 'Region', 'value': 'APAC'},
+            ],
+            'metrics': [
+              {'label': 'Requests', 'value': '1,204', 'delta': '+12%', 'trend': 'up'},
+              {'label': 'Errors', 'value': '3', 'delta': '-9%', 'trend': 'down'},
+              {'label': 'Ratio', 'value': '99.9%', 'trend': 'flat'},
+            ],
+            'tables': [
+              {
+                'title': '明细表',
+                'columns': ['Host', 'Count'],
+                'rows': [
+                  ['a.example', 12],
+                  ['b.example', 3],
+                ],
+              },
+            ],
+            'items': [
+              'first item',
+              {'label': 'Paired', 'value': 'yes'},
+            ],
+            'markdown':
+                '# 一级标题\n\n<b>x</b> **粗体** *斜体* `code`\n\n'
+                '- 无序项\n\n1. 有序项\n\n'
+                '```\nfence\n```\n\n[链接](https://example.com)',
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['css'], contains('dsh-portable'));
+      final html = artifact.definition['html'] as String;
+      // 各字段渲染成对应标签
+      expect(html, contains('<h2'));
+      expect(html, contains('Card title'));
+      expect(html, contains('Region'));
+      expect(html, contains('APAC'));
+      expect(html, contains('dsh-portable-metrics'));
+      expect(html, contains('Requests'));
+      expect(html, contains('1,204'));
+      expect(html, contains('up'));
+      expect(html, contains('down'));
+      expect(html, contains('<table'));
+      expect(html, contains('a.example'));
+      expect(html, contains('<li'));
+      expect(html, contains('first item'));
+      expect(html, contains('<h1'));
+      expect(html, contains('<strong'));
+      expect(html, contains('<em'));
+      expect(html, contains('<code'));
+      expect(html, contains('<ul'));
+      expect(html, contains('<ol'));
+      expect(html, contains('href="https://example.com"'));
+      // 文本先转义再套标签：<b>x</b> 不得原样透传
+      expect(html, contains('&lt;b&gt;x&lt;/b&gt;'));
+      expect(html, isNot(contains('<b>')));
+    });
+
+    test('renders a top-level kind=card payload', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'title': 'Top card',
+          'fields': [
+            {'label': 'Count', 'value': '7'},
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('<h2'));
+      expect(artifact.definition['html'], contains('Top card'));
+      expect(artifact.definition['html'], contains('Count'));
+      expect(artifact.definition['html'], contains('7'));
+    });
+
+    test('skips metas that already carry an intelligent-ui envelope', () {
+      for (final meta in <Map<String, Object?>>[
+        {'dsh-go/view': {'root': 'root'}, 'html': '<p>x</p>'},
+        {'dsh-go/media': {'kind': 'image'}, 'html': '<p>x</p>'},
+        {'ui': {'root': 'root'}, 'html': '<p>x</p>'},
+        {'dsh-go/view': {'root': 'root'}, 'card': {'title': 'T'}},
+      ]) {
+        expect(PortableUiAdapter.fromTool(item(meta), hostId: 'h', sessionId: 's'), isNull);
+      }
+      // 键存在但值为 null 不算被占用，仍按 html 识别。
+      final artifact = PortableUiAdapter.fromTool(
+        item({'ui': null, 'html': '<p>kept</p>'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('kept'));
+    });
+
+    test('prefers dsh-go/portable over a bare html meta', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'html': '<p>loose html</p>',
+          'dsh-go/portable': {
+            'kind': 'html',
+            'html': '<p>portable html</p>',
+            'policy': {'allowMedia': false},
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('portable html'));
+      expect(artifact.definition['html'], isNot(contains('loose html')));
+      expect(artifact.policy['allowMedia'], isFalse);
+    });
+
+    test('rejects scripts in html, widget html and fragment', () {
+      for (final meta in <Map<String, Object?>>[
+        {'html': '<p>x</p><script>alert(1)</script>'},
+        {
+          'widget': {'html': '<SCRIPT>alert(1)</SCRIPT>'},
+        },
+        {'fragment': '<script\nalert(1)</script>'},
+      ]) {
+        expect(PortableUiAdapter.fromTool(item(meta), hostId: 'h', sessionId: 's'), isNull);
+      }
+    });
+
+    test('caps structured tables at 50 rows and 12 columns', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'tables': [
+              {
+                'columns': List<String>.generate(13, (c) => 'col$c'),
+                'rows': [
+                  for (var r = 0; r < 60; r++) ['row$r', ...List<Object?>.generate(13, (c) => 'v$r-$c')],
+                ],
+              },
+            ],
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('row0'));
+      expect(html, contains('row49'));
+      expect(html, isNot(contains('row50')));
+      expect(html, contains('v0-10'));
+      expect(html, isNot(contains('v0-11')));
+    });
+
+    test('strips event attributes and script schemes from a fragment', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'fragment',
+          'html': '<div onclick="steal()">x</div>'
+              '<a href="javascript:go()">y</a>'
+              '<img/src=x/onerror="steal()">',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains('onclick')));
+      expect(html, isNot(contains('onerror')));
+      expect(html, isNot(contains('javascript:')));
+      expect(html, contains('<div'));
+    });
+
+    test('drops tags that can rebase urls or self-navigate', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'fragment',
+          'html': '<base href="https://evil.test/"><meta http-equiv="refresh" content="0;url=https://evil.test">'
+              '<iframe srcdoc="x"></iframe><object data="x"></object><p>ok</p>',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains('<base')));
+      expect(html, isNot(contains('<meta')));
+      expect(html, isNot(contains('<iframe')));
+      expect(html, isNot(contains('<object')));
+      expect(html, contains('<p>ok</p>'));
+    });
+
+    test('clips an over long card title', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'card': {'title': List<String>.filled(400, 'A').join()}}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.title!.length, 200);
+      expect(artifact.title!.endsWith('…'), isTrue);
+    });
+
+    test('truncates an over long table cell', () {
+      final long = List<String>.filled(3000, 'B').join();
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'tables': [
+              {
+                'columns': ['only'],
+                'rows': [
+                  [long],
+                ],
+              },
+            ],
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, isNot(contains(long)));
+      expect(html, contains('${List<String>.filled(1999, 'B').join()}…'));
+    });
+
+    test('returns null when there is nothing to render', () {
+      // 结构化数据一个字段都没有
+      expect(PortableUiAdapter.fromTool(item({'dsh-go/portable': {'kind': 'structured'}})), isNull);
+      expect(PortableUiAdapter.fromTool(item({'card': const {}})), isNull);
+      expect(PortableUiAdapter.fromTool(item({'kind': 'card', 'title': ''})), isNull);
+      // 空串 html / widget / fragment 继续往下找，找不到任何内容时返回 null
+      expect(PortableUiAdapter.fromTool(item({'html': ''})), isNull);
+      expect(PortableUiAdapter.fromTool(item({'widget': {'html': ''}})), isNull);
+      expect(PortableUiAdapter.fromTool(item({'fragment': '', 'html': ''})), isNull);
+      expect(PortableUiAdapter.fromTool(item(const {})), isNull);
+      expect(PortableUiAdapter.fromTool(item(null)), isNull);
+      // 空串 html 跳过，后面的 fragment 仍然生效
+      final artifact = PortableUiAdapter.fromTool(
+        item({'html': '', 'fragment': '<p>fallback</p>'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], contains('fallback'));
+    });
+
+    /// 与上面的 item 同构，只把工具名参数化：用于验证 ui_* 工具名被跳过。
+    ToolChatItem named(String name, Object? meta) => ToolChatItem(
+      callId: 'call-portable',
+      name: name,
+      arguments: '{}',
+      status: ToolStatus.succeeded,
+      seq: 9,
+      resultParts: const [],
+      meta: meta,
+    );
+
+    test('escapes quotes in a media url so it cannot break out of src', () {
+      // media 只从 dsh-go/portable envelope 的 kind:'media' 出卡，meta 顶层 kind 不参与识别。
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'dsh-go/portable': {'kind': 'media', 'url': 'https://x/"onerror=alert(1)'},
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      // 不转义时 html 会变成 src="https://x/"onerror=…，属性提前闭合、多出一个事件处理器。
+      expect(html, contains('&quot;'));
+      expect(html, isNot(contains('"onerror')));
+    });
+
+    test('rejects a media url that is not https', () {
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'media', 'url': 'http://x/a.png'}}),
+        ),
+        isNull,
+      );
+      // 对照组：同一形状的 https 地址能出卡，说明拒绝原因是协议而不是 media 映射本身。
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'media', 'url': 'https://x/a.png'}}),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('rejects every script spelling in a raw html fragment', () {
+      for (final html in <String>[
+        '<script/>alert(1)</script>', // 自闭合变体
+        '<p>x</p><script', // 没有闭合标签，直接到字符串末尾
+        '<ScRiPt src=//e>x</ScRiPt>', // 大小写混淆
+      ]) {
+        expect(PortableUiAdapter.fromTool(item({'html': html})), isNull, reason: html);
+      }
+      // 对照组：同样形状的干净 html 正常出卡。
+      expect(PortableUiAdapter.fromTool(item({'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('renders a markdown-only card without list markup', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'card': {
+            'markdown': '## 标题\n\n**粗** 与 *斜* 和 `code` 以及 [链](https://e.com)\n\n```\ndart\n```',
+          },
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('<h2>标题</h2>'));
+      expect(html, contains('<strong>粗</strong>'));
+      expect(html, contains('<em>斜</em>'));
+      expect(html, contains('<code>code</code>'));
+      expect(html, contains('href="https://e.com"'));
+      expect(html, contains('<pre><code>dart</code></pre>'));
+      // 输入里没有任何列表行：出现 <ul 就说明 markdown 被当成 items 分支渲染了。
+      expect(html, isNot(contains('<ul')));
+    });
+
+    test('drops html past the 60000 character cap and keeps the boundary', () {
+      final over = '<p>${'a' * 59994}</p>'; // 60001 字（3+59994+4），超一字符
+      expect(over.length, 60001);
+      expect(PortableUiAdapter.fromTool(item({'html': over})), isNull);
+
+      final edge = '<p>${'a' * 59993}</p>'; // 正好 60000 字（3+59993+4）
+      expect(edge.length, 60000);
+      final artifact = PortableUiAdapter.fromTool(item({'html': edge}), hostId: 'h', sessionId: 's');
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], edge);
+    });
+
+    test('skips metas owned by the ui_* tools', () {
+      for (final name in <String>['ui_render', 'ui_render_widget', 'ui_compose']) {
+        expect(PortableUiAdapter.fromTool(named(name, {'html': '<p>x</p>'})), isNull, reason: name);
+      }
+      // 对照组：换成普通工具名，同一份 meta 能出卡。
+      expect(PortableUiAdapter.fromTool(named('render_data', {'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('does not fall back past an unknown portable envelope', () {
+      expect(
+        PortableUiAdapter.fromTool(
+          item({'dsh-go/portable': {'kind': 'unknown'}, 'html': '<p>x</p>'}),
+        ),
+        isNull,
+      );
+      // 对照组：拿掉 envelope 后同一份 html 能出卡，说明是 envelope 终止了回落。
+      expect(PortableUiAdapter.fromTool(item({'html': '<p>x</p>'})), isNotNull);
+    });
+
+    test('falls back to an empty policy when the policy value is not a map', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({'html': '<p>x</p>', 'policy': 'nope'}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.definition['html'], '<p>x</p>');
+      // 非法类型被丢掉后落到空 Map，而不是把字符串或整个 meta 当 policy。
+      expect(artifact.policy, isEmpty);
+
+      final kept = PortableUiAdapter.fromTool(
+        item({'html': '<p>x</p>', 'policy': {'allowMedia': true}}),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      // 对照组：合法 policy 原样带出。
+      expect(kept, isNotNull);
+      expect(kept!.policy, {'allowMedia': true});
+    });
+
+    test('renders mixed items and a flat trend metric', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'items': [
+            '纯文本',
+            {'label': 'B', 'value': '2'},
+          ],
+          'metrics': [
+            {'label': 'M', 'value': '1', 'trend': 'flat'},
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('<li>纯文本</li>'));
+      expect(html, contains('<strong>B</strong> 2'));
+      expect(html, contains('dsh-portable-metrics'));
+      expect(html, contains('dsh-portable-trend-flat'));
+      expect(html, isNot(contains('dsh-portable-trend-up')));
+    });
   });
 
   group('IntelligentUiNativePreview', () {
