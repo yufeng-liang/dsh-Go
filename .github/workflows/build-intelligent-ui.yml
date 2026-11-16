@@ -70,7 +70,8 @@ jobs:
           chmod +x tooling/build-apk.sh
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
           ls "$ANDROID_NDK_HOME" | head
-          tooling/build-apk.sh --release -f arm64 --build-name 1.0.15
+          # 版本号跟随 app/pubspec.yaml（此前硬编码 1.0.15 会与仓库版本脱节）。
+          tooling/build-apk.sh --release -f arm64
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-go-intelligent-ui-arm64
