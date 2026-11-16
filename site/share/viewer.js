@@ -80,6 +80,7 @@
       "messages": "{n} 条消息",
       "thoughts": "{n} 段思考",
       "tokenCount": "{count} tokens",
+      "uiCard": "智能界面",
       "viewerTitle": "查看对话 · dsh-go"
     },
     "en": {
@@ -156,6 +157,7 @@
         "one": "{count} token",
         "other": "{count} tokens"
       },
+      "uiCard": "Interactive UI",
       "viewerTitle": "View chat · dsh-go"
     }
   };
@@ -300,7 +302,12 @@
           }).map(function (f) { return { name: str(f.name, 200), size: num(f.size) }; })
         };
       case 'reply':
-        return { type: 'reply', t: t, d: d, text: str(e.text, MAX_TEXT) || '', think: str(e.think, MAX_TEXT), plain: str(e.plain, MAX_TEXT), model: str(e.model, 80), cut: e.cut === true };
+        return {
+          type: 'reply', t: t, d: d, text: str(e.text, MAX_TEXT) || '', think: str(e.think, MAX_TEXT), plain: str(e.plain, MAX_TEXT), model: str(e.model, 80), cut: e.cut === true,
+          ui: (Array.isArray(e.ui) ? e.ui.slice(0, 20) : []).filter(function (card) {
+            return card && str(card.md, 20000);
+          }).map(function (card) { return { title: str(card.title, 120), md: str(card.md, 20000) }; })
+        };
       case 'tool':
         return {
           type: 'tool', t: t, d: d, name: str(e.name, 80) || 'tool', summary: str(e.summary, 500) || '', verb: str(e.verb, 40),
@@ -1085,12 +1092,25 @@
       return row;
     }
 
+    function uiCardRow(card) {
+      var box = el('div', 'dv-ui-card');
+      var head = el('div', 'dv-ui-card-head');
+      head.appendChild(el('span', 'dv-ui-card-mark', '◇'));
+      head.appendChild(el('span', 'dv-ui-card-title', card.title || tr('uiCard')));
+      box.appendChild(head);
+      var body = el('div', 'dv-md dv-ui-card-md');
+      markdown(card.md, body);
+      box.appendChild(body);
+      return box;
+    }
+
     function replyRow(e, text, streaming, done, foot) {
       var row = el('div', 'dv-row');
       var md = el('div', 'dv-md');
       markdown(streaming ? repairStream(text) : text, md);
       if (streaming) caret(md);
       row.appendChild(md);
+      if (done && e.ui) e.ui.forEach(function (card) { row.appendChild(uiCardRow(card)); });
       if (done && e.cut) row.appendChild(el('div', 'dv-cut', tr('interrupted')));
       if (foot) row.appendChild(el('div', 'dv-foot-note', foot));
       return row;

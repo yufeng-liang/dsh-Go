@@ -2,6 +2,7 @@
 // conversation, a file or a plugin, in the app's own type and the person's
 // accent colour, with the dsh-go lockup and a QR code to the project page.
 
+import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,9 @@ import 'package:flutter/rendering.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_info.dart';
+import '../../state/intelligent_ui.dart';
+import '../chat/intelligent_ui/intelligent_ui_native.dart';
+import '../chat/intelligent_ui/intelligent_ui_card.dart';
 import '../chat/render/code_block.dart' show highlightCode;
 import '../chat/render/markdown_body.dart';
 import '../common/tool_glyph.dart' show ToolGlyphs;
@@ -18,8 +22,11 @@ import '../shell/brand_mark.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import 'qr_code.dart';
+import 'intelligent_ui_snapshot.dart';
 import 'share_content.dart';
 import 'share_gallery.dart';
+import 'share_intelligent_ui.dart';
+import 'share_widget_text.dart';
 
 /// The card's look. Every template draws the same content.
 enum ShareTemplate {
@@ -514,6 +521,8 @@ class _Body extends StatelessWidget {
         (null, _) => 28,
         (ShareQuestion(), ShareAnswer()) => 14,
         (ShareAnswer(), ShareQuestion()) => 36,
+        (ShareAnswer(), ShareIntelligentUi()) => 14,
+        (ShareIntelligentUi(), ShareAnswer()) => 24,
         _ => 24,
       });
       children.add(_block(block, width));
@@ -539,6 +548,7 @@ class _Body extends StatelessWidget {
   Widget _block(ShareBlock block, double width) => switch (block) {
     final ShareQuestion q => _Question(q, width: width),
     ShareAnswer(:final markdown) => _Answer(markdown, width: width),
+    final ShareIntelligentUi ui => ShareIntelligentUiCardView(ui.card, width: width),
     final ShareFile file => _File(file),
     final SharePlugin plugin => _Plugin(plugin),
   };
@@ -737,10 +747,13 @@ class _Question extends StatelessWidget {
 /// blocks as [ShareCodeWell]s (wrapped, no buttons: an image can't scroll
 /// or copy), its pictures as galleries where they stood.
 class _Answer extends StatelessWidget {
-  const _Answer(this.markdown, {required this.width});
+  const _Answer(this.markdown, {required this.width, this.scale = 1});
 
   final String markdown;
   final double width;
+
+  /// 字号缩放；智能 UI 卡片用 13/16 与聊天里的 WebView 卡片对齐。
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
@@ -759,7 +772,7 @@ class _Answer extends StatelessWidget {
           else if (segment.code)
             ShareCodeWell(code: segment.text, language: segment.language)
           else
-            MarkdownBody(text: segment.text, selectable: false),
+            MarkdownBody(text: segment.text, selectable: false, scale: scale),
         ],
       ],
     );
@@ -819,6 +832,180 @@ class ShareCodeWell extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// An intelligent-ui card on a share card: a native frame, not the live WebView.
+/// The share card's native frame for one intelligent-ui card. Public so the
+/// replay page can draw the same card when viewing a share link.
+
+IntelligentUiArtifact _shareArtifact(ShareIntelligentUiCard card) {
+  final payload = card.artifact;
+  final kindName = payload?['kind'] as String? ?? 'widget';
+  final kind = IntelligentUiKind.values.firstWhere(
+    (value) => value.name == kindName,
+    orElse: () => IntelligentUiKind.widget,
+  );
+  final definition = payload?['definition'] as Map? ?? card.widget ?? const <String, Object?>{};
+  final policy = payload?['policy'] as Map? ?? const {'maxHeight': 4000};
+  return IntelligentUiArtifact(
+    kind: kind,
+    hostId: '',
+    sessionId: '',
+    uiId: 'share-${definition.hashCode}',
+    version: 1,
+    definition: Map<String, Object?>.from(definition),
+    seq: 0,
+    title: card.title,
+    policy: Map<String, Object?>.from(policy),
+  );
+}
+
+class ShareIntelligentUiCardView extends StatelessWidget {
+  const ShareIntelligentUiCardView(this.card, {super.key, this.width, this.allowWebView = false});
+
+  final ShareIntelligentUiCard card;
+  final double? width;
+
+  /// The live replay page can redraw a `ui_render_widget` card in a read-only
+  /// WebView for full typography fidelity. The share image cannot: platform
+  /// views are not captured by `toImage`, so it keeps the Markdown fallback.
+  final bool allowWebView;
+
+  @override
+  Widget build(BuildContext context) {
+    // A widget card keeps its real chat-card shell: the live card is the most
+    // faithful replay and already carries the same title, padding and 13px
+    // WebView typography as the chat list.
+    if (allowWebView && (card.artifact != null || card.widget != null)) {
+      return IntelligentUiCard(artifact: _shareArtifact(card), readOnly: true);
+    }
+    final bodyWidth = width == null ? 336.0 : width! - 16;
+    if (card.artifact == null && card.widget != null) {
+      final fullWidth = width ?? MediaQuery.sizeOf(context).width;
+      final title = card.title ?? appL10n.chatIntelligentUiTitle;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+            child: Row(
+              children: [
+                Icon(AppIcons.generating, size: 14, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _SnapshotIntelligentUi(card: card, width: fullWidth),
+        ],
+      );
+    }
+    final artifact = (card.artifact != null) ? _shareArtifact(card) : null;
+    // Declarative cards are pure Flutter widgets in the native fast path. Use
+    // the same renderer here so the share preview and the share image keep the
+    // chat card's text layout instead of degrading to Markdown.
+    final native = artifact != null && artifact.kind == IntelligentUiKind.declarative
+        ? IntelligentUiNativePreview.tryBuild(context, artifact)
+        : null;
+    if (native != null && artifact != null) {
+      // Reuse the exact chat card: native title, padding and typography.
+      return IntelligentUiCard(artifact: artifact, readOnly: true, immersive: true);
+    }
+    final body =
+        native ??
+        ((card.artifact != null || card.widget != null)
+            ? _SnapshotIntelligentUi(card: card, width: bodyWidth)
+            : _Answer(card.markdown, width: bodyWidth, scale: 13 / 16));
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final title = card.title ?? appL10n.chatIntelligentUiTitle;
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: AppShape.radiusLg,
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7), width: 0.8),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 14, 8, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(AppIcons.generating, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            body,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The widget's own pixels in the share card. A WebView in the tree would not
+/// be captured by [RepaintBoundary.toImage]; this is the offscreen Android
+/// renderer's PNG, drawn at the same logical width as the chat card.
+class _SnapshotIntelligentUi extends StatelessWidget {
+  const _SnapshotIntelligentUi({required this.card, required this.width});
+
+  final ShareIntelligentUiCard card;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    return FutureBuilder<Uint8List?>(
+      future: IntelligentUiSnapshot.capture(
+        card: card,
+        width: width,
+        dark: theme.brightness == Brightness.dark,
+        locale: locale,
+      ),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          if (card.widget case final widget?) {
+            return ShareWidgetTextView(widget: widget, markdown: card.markdown, width: width, title: card.title);
+          }
+          return _Answer(card.markdown, width: width, scale: 13 / 16);
+        }
+        return Image.memory(
+          bytes,
+          width: width,
+          fit: BoxFit.fitWidth,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+          excludeFromSemantics: true,
+        );
+      },
     );
   }
 }

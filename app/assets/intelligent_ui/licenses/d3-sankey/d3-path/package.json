@@ -1,0 +1,9 @@
+{
+  "name": "d3-path",
+  "version": "1.0.9",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d3/d3-path.git"
+  }
+}

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../state/artifacts.dart';
 import '../../state/chat_state.dart';
+import '../../state/intelligent_ui.dart';
 import 'chat_rows.dart';
 import 'tool_view.dart' show ToolCardPlacement;
 
@@ -24,13 +25,19 @@ class ChatRowsCache {
   bool get onlyDraftChanged => _onlyDraftChanged;
   bool _onlyDraftChanged = false;
 
-  List<ChatRow> update(ChatState state, {required bool foldTurns, List<TurnArtifacts> artifacts = const []}) {
+  List<ChatRow> update(
+    ChatState state, {
+    required bool foldTurns,
+    List<TurnArtifacts> artifacts = const [],
+    List<IntelligentUiArtifact> intelligentUis = const [],
+  }) {
     final previous = _state;
     _onlyDraftChanged = false;
     List<ChatRow>? reused;
     if (previous != null &&
         foldTurns == _foldTurns &&
         listEquals(artifacts, _artifacts) &&
+        state.intelligentUiRevision == previous.intelligentUiRevision &&
         state.running == previous.running &&
         listEquals(state.approvals, previous.approvals) &&
         listEquals(state.questions, previous.questions) &&
@@ -57,6 +64,7 @@ class ChatRowsCache {
         turns: state.turns,
         foldTurns: foldTurns,
         artifacts: artifacts,
+        intelligentUis: intelligentUis,
       );
       _index = {for (var i = 0; i < _rows.length; i++) _rows[i].key: i};
     }

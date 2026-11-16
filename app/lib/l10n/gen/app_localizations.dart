@@ -8666,6 +8666,24 @@ abstract class L10n {
   /// **'{name}，{description}'**
   String chatArtifactSemantics(String name, String description);
 
+  /// No description provided for @chatIntelligentUiTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'智能界面'**
+  String get chatIntelligentUiTitle;
+
+  /// No description provided for @chatIntelligentUiActionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送界面操作？'**
+  String get chatIntelligentUiActionTitle;
+
+  /// No description provided for @chatIntelligentUiUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'界面卡片暂不可用'**
+  String get chatIntelligentUiUnavailable;
+
   /// No description provided for @commonCancel.
   ///
   /// In zh, this message translates to:

@@ -12,6 +12,7 @@ import 'attachments.dart';
 import 'chat_error_text.dart';
 import 'connection_state.dart';
 import 'hosts_state.dart';
+import 'intelligent_ui.dart';
 import 'models_state.dart';
 import 'notify_state.dart' show appForegroundProvider;
 import 'run_pulse.dart';
@@ -292,6 +293,8 @@ class ChatState {
     this.todos,
     this.goal,
     this.clockSkew = Duration.zero,
+    this.intelligentUis = const [],
+    this.intelligentUiRevision = 0,
   });
 
   final List<ChatItem> items;
@@ -364,6 +367,14 @@ class ChatState {
   /// on-device engine). Live timers subtract it from `DateTime.now()`.
   final Duration clockSkew;
 
+  /// intelligent-ui 工具事件投影出的卡片；卡片按 tool call id 挂到对应
+  /// ToolCallRow 上（见 chat_rows.dart 的 deriveRows）。
+  final List<IntelligentUiArtifact> intelligentUis;
+
+  /// Monotonic revision of [intelligentUis]. Consumers can compare this
+  /// integer instead of deep-comparing artifact trees on every rebuild.
+  final int intelligentUiRevision;
+
   /// The running turn's trace; null when idle.
   TurnTrace? get runningTurn {
     final last = turns.isEmpty ? null : turns.last;
@@ -399,6 +410,8 @@ class ChatState {
     bool? autoApprove,
     Set<String>? autoAnswered,
     List<CommandNotice>? commands,
+    List<IntelligentUiArtifact>? intelligentUis,
+    int? intelligentUiRevision,
   }) => ChatState(
     items: items,
     running: running,
@@ -426,6 +439,8 @@ class ChatState {
     todos: todos,
     goal: goal,
     clockSkew: clockSkew,
+    intelligentUis: intelligentUis ?? this.intelligentUis,
+    intelligentUiRevision: intelligentUiRevision ?? this.intelligentUiRevision,
   );
 }
 
@@ -469,6 +484,13 @@ class ChatController extends Notifier<ChatState> {
   Timer? _stopTimeout;
   _ChatOperation? _stoppingOperation;
   bool _dirty = false;
+  bool _intelligentUiDirty = true;
+  List<IntelligentUiArtifact> _intelligentUis = const [];
+  IntelligentUiProjection? _uiProjection;
+  final List<SessionLogEvent> _pendingUiEvents = [];
+  final Set<String> _uiToolCalls = {};
+  bool _uiProjectionNeedsReplay = true;
+  int _intelligentUiRevision = 0;
   ModelSelection? _model;
   Object? _modelChange;
   bool _defaultModelSaveFailed = false;
@@ -578,10 +600,21 @@ class ChatController extends Notifier<ChatState> {
       _approvalScope = Object();
       _autoApprove = false;
       _autoAnswered = const {};
+      _intelligentUis = const [];
+      _intelligentUiRevision = 0;
+      _uiProjection = null;
+      _pendingUiEvents.clear();
+      _uiToolCalls.clear();
+      _uiProjectionNeedsReplay = true;
     }
     // Async continuations from the previous build no longer own these marks.
     _modelChange = null;
     _historyRead = null;
+    _intelligentUiDirty = true;
+    _uiProjection = null;
+    _pendingUiEvents.clear();
+    _uiToolCalls.clear();
+    _uiProjectionNeedsReplay = true;
     _moving.clear();
     _delivering.clear();
     _synchronized = false;
@@ -703,6 +736,8 @@ class ChatController extends Notifier<ChatState> {
     autoApprove: _autoApprove,
     autoAnswered: _autoAnswered,
     clockSkew: _skew ?? Duration.zero,
+    intelligentUis: _intelligentUis,
+    intelligentUiRevision: _intelligentUiRevision,
   );
 
   void _markSyncing({SessionFollowEpoch? epoch, bool building = false}) {
@@ -850,6 +885,40 @@ class ChatController extends Notifier<ChatState> {
             final before = reconcile ? _inboxIds() : const <String>{};
             if (event is SessionSnapshotEvent) _trackSnapshotClaims(event.events);
             final changed = _transcript.apply(event);
+            if (event is SessionSnapshotEvent) {
+              _uiProjection = null;
+              _pendingUiEvents.clear();
+              _uiToolCalls.clear();
+              _uiProjectionNeedsReplay = true;
+              _intelligentUiDirty = true;
+            } else if (event is ToolResultEvent && event.surfaceOp != null && event.surfaceOp != 'append') {
+              // A replace/retract event rewrites earlier log rows; replay the
+              // whole projection rather than trying to invert it.
+              _uiProjection = null;
+              _pendingUiEvents.clear();
+              _uiToolCalls.clear();
+              _uiProjectionNeedsReplay = true;
+              _intelligentUiDirty = true;
+            } else if (event is AssistantMessageEvent && event.message.toolCalls.isNotEmpty) {
+              // 增量投影也要拿到根调用的锚点（rootSeqs 用 assistant 消息的
+              // seq 匹配工具行）；缺了它，实时流的 PTC 子卡挂不上行，只有
+              // 重进会话全量重放才出现。
+              _pendingUiEvents.add(event);
+            } else if (event is ToolCallEvent) {
+              if (IntelligentUiProjector.isUiToolName(event.name)) {
+                _uiToolCalls.add(event.callId);
+                _pendingUiEvents.add(event);
+                _intelligentUiDirty = true;
+              }
+            } else if (event is ToolResultEvent) {
+              if (_uiToolCalls.contains(event.callId)) {
+                _pendingUiEvents.add(event);
+                _intelligentUiDirty = true;
+              }
+            } else if (event is SessionLogEvent && event.type == 'tool/ptc-dispatch') {
+              _pendingUiEvents.add(event);
+              _intelligentUiDirty = true;
+            }
             if (_awayLong && !_quiet && _transcript.running) scheduleMicrotask(_quietIfRunning);
             if (reconcile) {
               final removed = before.difference(_inboxIds());
@@ -1204,6 +1273,29 @@ class ChatController extends Notifier<ChatState> {
       ]);
     }
     final pending = _placePending();
+    if (_intelligentUiDirty) {
+      try {
+        final hostId = ref.read(activeHostProvider).id;
+        if (_uiProjectionNeedsReplay || _uiProjection == null) {
+          _uiProjection = IntelligentUiProjection(hostId: hostId, sessionId: sessionId);
+          _uiProjection!.applyAll(_transcript.events);
+          _uiProjectionNeedsReplay = false;
+        } else {
+          _uiProjection!.applyPending(_pendingUiEvents);
+        }
+        _pendingUiEvents.clear();
+        _intelligentUis = _uiProjection!.artifacts;
+        _intelligentUiRevision++;
+      } catch (_) {
+        // 第三方插件的事件不可信：投影失败时只丢掉卡片，不影响聊天本身。
+        _intelligentUis = const [];
+        _uiProjection = null;
+        _pendingUiEvents.clear();
+        _uiProjectionNeedsReplay = true;
+        _intelligentUiRevision++;
+      }
+      _intelligentUiDirty = false;
+    }
     state = ChatState(
       items: items,
       running: running,
@@ -1231,6 +1323,8 @@ class ChatController extends Notifier<ChatState> {
       todos: _transcript.todos,
       goal: _transcript.goal,
       clockSkew: _skew ?? Duration.zero,
+      intelligentUis: _intelligentUis,
+      intelligentUiRevision: _intelligentUiRevision,
     );
   }
 
@@ -1982,6 +2076,8 @@ class ChatController extends Notifier<ChatState> {
         todos: state.todos,
         goal: state.goal,
         clockSkew: state.clockSkew,
+        intelligentUis: state.intelligentUis,
+        intelligentUiRevision: state.intelligentUiRevision,
       );
       return false;
     } finally {
@@ -2018,6 +2114,11 @@ class ChatController extends Notifier<ChatState> {
       if (!current()) return;
       _transcript.prependHistory(page);
       _dropEchoed(page.events);
+      _uiProjection = null;
+      _pendingUiEvents.clear();
+      _uiToolCalls.clear();
+      _uiProjectionNeedsReplay = true;
+      _intelligentUiDirty = true;
       // A done event may have arrived before its run was loaded. Fold the
       // merged log in seq order so paging cannot resurrect a finished command.
       _transcript.events.forEach(_applyCommandEvent);

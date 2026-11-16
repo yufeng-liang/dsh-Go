@@ -49,6 +49,7 @@ void registerThirdPartyLicenses({String? os}) {
 const _copiedCode = <LicenseEntry>[
   LicenseEntryWithLineBreaks(<String>['PiPilot'], _pipilotMit),
   LicenseEntryWithLineBreaks(<String>['DeepSeek Harness'], _dshMit),
+  LicenseEntryWithLineBreaks(<String>['deepseek-harness-intelligent-ui'], _intelligentUiMit),
   LicenseEntryWithLineBreaks(<String>['Phase'], _phaseNotice),
   LicenseEntryWithLineBreaks(<String>['DS Bot'], _dsBotNotice + _apache2),
   LicenseEntryWithLineBreaks(<String>['ds-harness-remote'], _dshRemoteMit),
@@ -145,6 +146,15 @@ const _dshMit = '''
 MIT License
 
 Copyright (c) 2026 DeepSeek
+
+$_mitTerms''';
+
+/// deepseek-harness-intelligent-ui: the portable renderer asset and the Dart projection,
+/// bridge and card code derived from its portable renderer implementation.
+const _intelligentUiMit = '''
+MIT License
+
+Copyright (c) 2026 dreamfarer-space
 
 $_mitTerms''';
 

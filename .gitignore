@@ -44,3 +44,14 @@ site/build/
 runtime/ohos/process/build/
 # NodeMobile, the runtime archive and addon sources: tooling/ios/prepare-engine.sh
 app/ios/Engine/
+# 本地构建/截图产物(不进版本库)
+apk-dist-*/
+dist-intelligent-ui*/
+apk-final*/
+apk-review*/
+after-*.png
+*-session.jsonl
+dash_*.html
+after_*.png
+apk-font/
+apk-final2/

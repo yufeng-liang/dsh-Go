@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import '../l10n/l10n.dart';
 import 'share_codec.dart';
 import 'share_models.dart';
+import '../state/intelligent_ui.dart';
 
 /// Body version a conversation is written with. Older apps read `v: 1`
 /// only, so they say 「需要更新」 instead of failing on an unknown kind.
@@ -35,6 +36,8 @@ const _maxText = 400 * 1000;
 const _maxToolText = 64 * 1000;
 const _maxEntries = 20000;
 const _maxImagesPerMessage = 20;
+const _maxUiCards = 20;
+const _maxUiMarkdown = 20 * 1000;
 
 /// A tool call's outcome.
 enum ToolOutcome {
@@ -97,6 +100,7 @@ sealed class ConversationEntry {
           source: _str(json['source'], 32),
         );
       case 'reply':
+        final ui = json['ui'];
         return ReplyEntry(
           t: t,
           d: d,
@@ -105,6 +109,10 @@ sealed class ConversationEntry {
           plain: _str(json['plain'], _maxText),
           model: _str(json['model'], 80),
           interrupted: json['cut'] == true,
+          ui: [
+            if (ui is List)
+              for (final card in ui.take(_maxUiCards)) ?ConversationUiCard.fromJson(card),
+          ],
         );
       case 'tool':
         final args = json['args'];
@@ -240,6 +248,7 @@ final class ReplyEntry extends ConversationEntry {
     this.plain,
     this.model,
     this.interrupted = false,
+    this.ui = const [],
   }) : super(t);
 
   final int? d;
@@ -256,6 +265,9 @@ final class ReplyEntry extends ConversationEntry {
   final String? model;
   final bool interrupted;
 
+  /// Intelligent-ui cards shown under this reply on a share card / replay.
+  final List<ConversationUiCard> ui;
+
   @override
   String get type => 'reply';
 
@@ -269,7 +281,71 @@ final class ReplyEntry extends ConversationEntry {
     'plain': ?plain,
     'model': ?model,
     if (interrupted) 'cut': true,
+    if (ui.isNotEmpty) 'ui': [for (final card in ui) card.toJson()],
   };
+}
+
+/// One intelligent-ui card in a reply: a title and Markdown, as a viewer that
+/// has no sandboxed renderer can draw it.
+@immutable
+class ConversationUiCard {
+  const ConversationUiCard({this.title, required this.markdown, this.widget, this.artifact});
+
+  static ConversationUiCard? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final markdown = _str(json['md'], _maxUiMarkdown);
+    final widget = _widgetDefinition(json['widget']);
+    final artifact = _artifactDefinition(json['artifact']);
+    if ((markdown == null || markdown.isEmpty) && widget == null && artifact == null) return null;
+    return ConversationUiCard(
+      title: _str(json['title'], 120),
+      markdown: markdown ?? '',
+      widget: widget,
+      artifact: artifact,
+    );
+  }
+
+  final String? title;
+  final String markdown;
+
+  /// A `ui_render_widget` definition (html/css only), when this card can be
+  /// replayed at full fidelity in a read-only WebView.
+  final Map<String, Object?>? widget;
+
+  /// A full renderer artifact for cards that are not plain widgets
+  /// (`ui_render` / `ui_compose`). The share page can replay it in a sandboxed
+  /// WebView, so complex cards keep their layout, charts and tables.
+  final Map<String, Object?>? artifact;
+
+  Map<String, Object?> toJson() => {
+    'title': ?title,
+    'md': markdown,
+    if (widget != null) 'widget': widget,
+    if (artifact != null) 'artifact': artifact,
+  };
+}
+
+const _maxUiWidget = 200 * 1000;
+const _maxUiArtifact = 480 * 1000;
+
+Map<String, Object?>? _widgetDefinition(Object? json) {
+  if (json is! Map) return null;
+  final html = json['html'];
+  final css = json['css'];
+  if (html is! String || html.isEmpty || html.length > _maxUiWidget) return null;
+  if (css != null && (css is! String || css.length > _maxUiWidget)) return null;
+  final sanitized = IntelligentUiProjector.sanitizeExternalArtifact({
+    'kind': 'widget',
+    'definition': {'html': html, if (css is String && css.isNotEmpty) 'css': css},
+  });
+  final definition = sanitized?['definition'];
+  return definition is Map ? Map<String, Object?>.from(definition) : null;
+}
+
+Map<String, Object?>? _artifactDefinition(Object? json) {
+  if (json is! Map) return null;
+  if (jsonEncode(json).length > _maxUiArtifact) return null;
+  return IntelligentUiProjector.sanitizeExternalArtifact(json);
 }
 
 final class ToolEntry extends ConversationEntry {

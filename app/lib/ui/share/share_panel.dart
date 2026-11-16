@@ -27,6 +27,7 @@ import '../../state/android_features.dart';
 import '../../state/artifact_files.dart';
 import '../../state/artifacts.dart';
 import '../../state/chat_state.dart';
+import '../../state/intelligent_ui.dart';
 import '../../state/regenerate.dart' show sessionImageBytes;
 import '../../state/sessions_state.dart';
 import '../../usage/usage_stats.dart';
@@ -37,6 +38,7 @@ import '../replay/continue_chat.dart' show conversationMarkdown;
 import '../replay/conversation_out.dart';
 import 'share_content.dart';
 import 'share_image_page.dart';
+import 'share_intelligent_ui.dart';
 import 'share_panel_pages.dart';
 
 /// How much of a conversation goes out.
@@ -553,6 +555,7 @@ class SharePanelModel extends ChangeNotifier {
         turns: end.turns,
         commands: end.commands,
         model: replay.share.model,
+        uiCards: _uiCards(end.items, end.turns, end.intelligentUis),
       );
     }
     await _loadHistory();
@@ -571,7 +574,44 @@ class SharePanelModel extends ChangeNotifier {
       commands: state.commands,
       events: List.of(notifier.events),
       model: state.model?.model,
+      uiCards: _uiCards(state.items, state.turns, state.intelligentUis),
     );
+  }
+
+  /// Intelligent-ui cards, keyed by the last reply seq of the turn that first
+  /// showed them. A share file has no WebView, so the viewer draws the card
+  /// from the artifact's Markdown instead.
+  List<({int seq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>
+  _uiCards(List<ChatItem> items, List<TurnTrace> turns, List<IntelligentUiArtifact> artifacts) {
+    final out =
+        <({int seq, String? title, String markdown, Map<String, Object?>? widget, Map<String, Object?>? artifact})>[];
+    for (final card in shareIntelligentUiCardSources(artifacts)) {
+      final trace = turns
+          .where((t) => t.startSeq <= card.originSeq && (t.endSeq == null || card.originSeq <= t.endSeq!))
+          .firstOrNull;
+      if (trace == null) continue;
+      final replySeq = items
+          .whereType<AssistantChatItem>()
+          .where((item) {
+            final seq = item.seq;
+            return seq != null &&
+                seq >= trace.startSeq &&
+                (trace.endSeq == null || seq <= trace.endSeq!) &&
+                !item.streaming;
+          })
+          .toList()
+          .lastOrNull
+          ?.seq;
+      if (replySeq == null) continue;
+      out.add((
+        seq: replySeq,
+        title: card.title,
+        markdown: card.markdown,
+        widget: card.widget,
+        artifact: card.artifact,
+      ));
+    }
+    return out;
   }
 
   // ── Errors and busy keys ─────────────────────────────────────────────────

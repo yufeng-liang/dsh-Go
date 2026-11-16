@@ -8,6 +8,7 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../../state/intelligent_ui.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/fluid_bits.dart';
 import '../../common/smooth_size.dart';
@@ -16,6 +17,7 @@ import '../../fx/orbs/thinking_orb.dart';
 import '../../plugins/view/plugin_view.dart' show DshUiParsed, PluginToolCard;
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
+import '../intelligent_ui/intelligent_ui_card.dart';
 import '../render/code_block.dart';
 import '../render/diff_view.dart';
 import '../render/long_text.dart';
@@ -71,10 +73,19 @@ class ToolRow extends StatefulWidget {
     this.autoAnswered = const {},
     this.onOpenSubagent,
     this.card = ToolCardPlacement.inline,
+    this.uiArtifact,
+    this.onSendPrompt,
   });
 
   final ToolChatItem item;
   final ApprovalResponder onRespond;
+
+  /// intelligent-ui 投影出的卡片；非空时替代插件原生卡片呈现在
+  /// `cardOnly` 位置。
+  final IntelligentUiArtifact? uiArtifact;
+
+  /// 智能 UI 卡里的 `sendPrompt` 动作，交给当前会话发送。
+  final Future<bool> Function(String text)? onSendPrompt;
 
   /// 带原生卡片(`meta["dsh-go/view"]`)时卡片画在哪,见 [ToolCardPlacement]。
   /// 不带卡片的调用不受影响。
@@ -93,24 +104,90 @@ class ToolRow extends StatefulWidget {
   State<ToolRow> createState() => _ToolRowState();
 }
 
-class _ToolRowState extends State<ToolRow> {
+class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
+  // 保活行的 LRU 注册表:每个带智能 UI 卡的行是一个常驻 WebView,
+  // 同屏常驻太多会让滚动掉帧,只留最近查看的几张,更旧的照常回收
+  // (划回时重新加载,换取滑动流畅)。
+  static final Set<_ToolRowState> _keepAliveLru = <_ToolRowState>{};
+  static const int _maxKeepAlive = 6;
+
   ToolView? _view;
 
   /// 用户点过之后的展开状态;没点过时按内容定:带原生卡片的默认展开
   /// (结果到了、卡片出现时也随之展开),其余默认收起。
   bool? _toggled;
 
+  // 带智能 UI 卡的行在滚出视窗后保持存活:卡内 WebView 重建要重跑整个
+  // 渲染器与图片加载,划走再划回会白屏重载;普通工具行不值得,照常回收。
+  @override
+  bool get wantKeepAlive => widget.uiArtifact != null && _keepAliveLru.contains(this);
+
+  // 把自己记为最近查看的保活行;超过上限时把最旧的逐出并立即释放。
+  void _registerKeepAlive() {
+    if (widget.uiArtifact == null) {
+      if (_keepAliveLru.remove(this)) updateKeepAlive();
+      return;
+    }
+    // Set 保持插入序:先移除再插回末尾,把「最早注册」刷新成「最近查看」。
+    // 只在首次注册时处理会退化成 FIFO,把当前屏幕上的卡逐出。
+    _keepAliveLru.remove(this);
+    _keepAliveLru.add(this);
+    while (_keepAliveLru.length > _maxKeepAlive) {
+      final oldest = _keepAliveLru.first;
+      if (oldest == this) break; // 永不逐出自己
+      _keepAliveLru.remove(oldest);
+      if (oldest.mounted) oldest.updateKeepAlive();
+    }
+    updateKeepAlive();
+  }
+
+  @override
+  void didUpdateWidget(covariant ToolRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uiArtifact != widget.uiArtifact) _registerKeepAlive();
+  }
+
+  @override
+  void dispose() {
+    _keepAliveLru.remove(this);
+    super.dispose();
+  }
+
   ToolView get view => _view = ToolView.of(widget.item, _view);
 
   bool _expandedFor(ToolView v) =>
-      _toggled ?? (widget.card == ToolCardPlacement.inline && (v.pluginView is DshUiParsed || v.media != null));
+      _toggled ??
+      (widget.card == ToolCardPlacement.inline &&
+          (widget.uiArtifact != null ||
+              isIntelligentUiTool(widget.item) ||
+              v.pluginView is DshUiParsed ||
+              v.media != null));
 
   @override
   Widget build(BuildContext context) {
+    _registerKeepAlive();
+    super.build(context);
     final v = view;
     // 一轮折叠后:只露卡片本身,工具行收在过程里。
     if (widget.card == ToolCardPlacement.cardOnly) {
       if (v.questionReplies.isNotEmpty) return QuestionReplyCard(replies: v.questionReplies);
+      if (widget.uiArtifact case final artifact?) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: IntelligentUiCard(
+            artifact: artifact,
+            onSendPrompt: widget.onSendPrompt,
+            immersive: true,
+            allowFullscreen: true,
+          ),
+        );
+      }
+      if (isIntelligentUiTool(widget.item)) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 4),
+          child: IntelligentUiCardPlaceholder(immersive: true),
+        );
+      }
       if (v.media case final media?) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -141,7 +218,10 @@ class _ToolRowState extends State<ToolRow> {
           expanded: expanded,
           opens: child != null,
           // 卡片正摊开在下面(标题就在卡片上):行里照旧写参数摘要。
-          titled: !(expanded && widget.card == ToolCardPlacement.inline && v.pluginView is DshUiParsed),
+          titled:
+              !(expanded &&
+                  widget.card == ToolCardPlacement.inline &&
+                  (v.pluginView is DshUiParsed || widget.uiArtifact != null || isIntelligentUiTool(widget.item))),
           onTap: () {
             if (child != null && opener!(child)) return;
             setState(() => _toggled = !expanded);
@@ -151,17 +231,28 @@ class _ToolRowState extends State<ToolRow> {
           open: expanded,
           child: Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 8),
-            child: switch (v.pluginView) {
-              // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
-              _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),
-              // 插件工具带了原生卡片(meta["dsh-go/view"]);折进过程里的
-              // 那一行不再画卡片(卡片在外面)。
-              final parse? when widget.card == ToolCardPlacement.inline => PluginToolCard(
-                parse: parse,
-                fallback: ToolDetail(view: v),
-              ),
-              _ => ToolDetail(view: v),
-            },
+            child: widget.uiArtifact != null && widget.card == ToolCardPlacement.inline
+                // intelligent-ui 卡片：流式运行中先直接展示，结束后由折叠
+                // 逻辑把工具行收进过程、卡片留在外面。
+                ? IntelligentUiCard(
+                    artifact: widget.uiArtifact!,
+                    onSendPrompt: widget.onSendPrompt,
+                    immersive: true,
+                    allowFullscreen: true,
+                  )
+                : isIntelligentUiTool(widget.item)
+                ? const IntelligentUiCardPlaceholder(immersive: true)
+                : switch (v.pluginView) {
+                    // 生成的图片 / 视频:媒体卡(折进过程里的那一行不画,卡片在外面)。
+                    _ when v.media != null && widget.card == ToolCardPlacement.inline => MediaCard(meta: v.media!),
+                    // 插件工具带了原生卡片(meta["dsh-go/view"]);折进过程里的
+                    // 那一行不再画卡片(卡片在外面)。
+                    final parse? when widget.card == ToolCardPlacement.inline => PluginToolCard(
+                      parse: parse,
+                      fallback: ToolDetail(view: v),
+                    ),
+                    _ => ToolDetail(view: v),
+                  },
           ),
         ),
         if (widget.card == ToolCardPlacement.inline && v.questionReplies.isNotEmpty)

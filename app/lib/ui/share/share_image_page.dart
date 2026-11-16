@@ -28,6 +28,7 @@ import '../theme/theme.dart';
 import 'share_card.dart';
 import 'share_content.dart';
 import 'share_export.dart';
+import 'intelligent_ui_snapshot.dart';
 
 /// How a card is drawn: the template and what it shows besides the answer.
 /// Shared by the panel's preview and its image page.
@@ -140,7 +141,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     String? error;
     var dismissed = false;
     try {
-      await settleShareCard(context, _content);
+      await settleShareCard(context, _content, template: _style.templateFor(Theme.of(context).brightness));
       final png = await captureShareCard(_cardKey);
       final file = await exporter.write(png);
       if (busy == _Busy.sharing) {
@@ -221,9 +222,10 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
 }
 
 /// Pictures on [content]'s card are in before it is captured.
-Future<void> settleShareCard(BuildContext context, ShareContent content) async {
+Future<void> settleShareCard(BuildContext context, ShareContent content, {required ShareTemplate template}) async {
   final pending = <Future<void>>[];
   final dpr = MediaQuery.devicePixelRatioOf(context);
+  final contentWidth = ShareCard.contentWidth(template);
   for (final block in content.blocks) {
     if (block case ShareFile(:final image?)) {
       pending.add(
@@ -231,10 +233,22 @@ Future<void> settleShareCard(BuildContext context, ShareContent content) async {
       );
     } else if (block case SharePlugin(:final icon?) when icon.startsWith('https://')) {
       pending.add(precacheImage(ResizeImage(NetworkImage(icon), width: (64 * dpr).round()), context));
+    } else if (block case ShareIntelligentUi(:final card) when card.widget != null || card.artifact != null) {
+      pending.add(() async {
+        final bytes = await IntelligentUiSnapshot.capture(
+          card: card,
+          width: contentWidth,
+          dark: Theme.of(context).brightness == Brightness.dark,
+          locale: Localizations.localeOf(context).toLanguageTag(),
+        );
+        if (bytes != null && context.mounted) {
+          await precacheImage(MemoryImage(bytes), context);
+        }
+      }());
     }
   }
   try {
-    await Future.wait(pending).timeout(const Duration(seconds: 4));
+    await Future.wait(pending).timeout(Duration(seconds: 4 + pending.length));
   } catch (_) {}
   await WidgetsBinding.instance.endOfFrame;
 }

@@ -1,0 +1,9 @@
+{
+  "name": "canvas-confetti",
+  "version": "1.9.3",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catdad/canvas-confetti.git"
+  }
+}

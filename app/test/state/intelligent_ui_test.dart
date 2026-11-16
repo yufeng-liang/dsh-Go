@@ -1,0 +1,345 @@
+import 'dart:convert';
+
+import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:dsh_app/state/intelligent_ui.dart';
+import 'package:dsh_app/ui/theme/app_theme.dart';
+import 'package:dsh_app/ui/chat/intelligent_ui/intelligent_ui_native.dart';
+
+Map<String, Object?> _tree({String root = 'root'}) => {
+  'root': root,
+  'components': [
+    {
+      'id': root,
+      'type': 'text',
+      'props': {'text': 'hello'},
+    },
+  ],
+};
+
+ToolCallEvent _call(int seq, String callId, String name, Map<String, Object?> args) => ToolCallEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  const {},
+  turn: 1,
+  step: 1,
+  callId: callId,
+  name: name,
+  arguments: _json(args),
+);
+
+ToolResultEvent _result(int seq, String callId, {Object? meta, bool isError = false}) => ToolResultEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  {'meta': meta},
+  turn: 1,
+  step: 1,
+  message: Message(
+    id: 'm$seq',
+    role: MessageRole.tool,
+    parts: const [],
+    source: MessageSource('tool', {'callId': callId}),
+    toolCallId: callId,
+    isError: isError,
+  ),
+);
+
+String _json(Object? value) => const JsonEncoder().convert(value);
+
+AssistantMessageEvent _assistantWithToolCall(int seq, String callId, String name) => AssistantMessageEvent(
+  seq,
+  DateTime(2026, 1, 1),
+  const {},
+  turn: 1,
+  step: 1,
+  message: Message(
+    id: 'm$seq',
+    role: MessageRole.assistant,
+    parts: [ToolCallPart(id: callId, name: name, arguments: '{}')],
+    source: MessageSource('model', const {}),
+  ),
+);
+
+void main() {
+  group('IntelligentUiProjector', () {
+    test('projects ui_render and applies a stale-safe patch', () {
+      final events = <SessionLogEvent>[
+        _call(1, 'call-a', 'ui_render', {'title': 'First', ..._tree()}),
+        _result(
+          2,
+          'call-a',
+          meta: {
+            'ok': true,
+            'policy': {'maxHeight': 320},
+          },
+        ),
+        _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 1, 'ops': []}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'host', sessionId: 'session');
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.uiId, 'call-a');
+      expect(artifacts.single.kind, IntelligentUiKind.declarative);
+      expect(artifacts.single.version, 2);
+      expect(artifacts.single.title, 'First');
+      expect(artifacts.single.policy['maxHeight'], 320);
+      expect(artifacts.single.definition['root'], 'next');
+    });
+
+    test('ignores a patch with the wrong base version', () {
+      final events = <SessionLogEvent>[
+        _call(1, 'call-a', 'ui_render', _tree()),
+        _result(2, 'call-a', meta: {'ok': true}),
+        _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 2, 'ops': []}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 3, ..._tree()},
+          },
+        ),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.version, 1);
+    });
+
+    test('projects PTC dispatch sub-calls', () {
+      final events = <SessionLogEvent>[
+        UnknownEvent(1, DateTime(2026, 1, 1), 'tool/ptc-dispatch', {
+          'name': 'ui_render',
+          'subCallId': 'sub-a',
+          'arguments': _tree(),
+          'meta': {'ok': true},
+        }),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.uiId, 'sub-a');
+      expect(artifacts.single.version, 1);
+    });
+
+    test('maps PTC to the assistant message seq when the call is listed there', () {
+      final events = <SessionLogEvent>[
+        _assistantWithToolCall(1, 'root-a', 'run_code'),
+        UnknownEvent(2, DateTime(2026, 1, 1), 'tool/ptc-dispatch', {
+          'name': 'ui_render',
+          'subCallId': 'sub-a',
+          'rootCallId': 'root-a',
+          'arguments': _tree(),
+          'meta': {'ok': true},
+        }),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.originSeq, 1);
+    });
+
+    test('patches one composition block without touching its siblings', () {
+      final composition = {
+        'title': 'Composition',
+        'blocks': [
+          {'id': 'text', 'type': 'markdown', 'text': 'intro'},
+          {'id': 'card', 'type': 'catalog', ..._tree()},
+        ],
+      };
+      final events = <SessionLogEvent>[
+        _call(1, 'compose-a', 'ui_compose', composition),
+        _result(2, 'compose-a', meta: {'ok': true}),
+        _call(3, 'patch-a', 'ui_patch', {'uiId': 'compose-a#card', 'baseVersion': 1, 'ops': []}),
+        _result(
+          4,
+          'patch-a',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'compose-a#card', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
+      ];
+      final artifacts = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      expect(artifacts, hasLength(1));
+      final definition = artifacts.single.definition;
+      expect(artifacts.single.version, 2);
+      expect((definition['blocks'] as List).length, 2);
+      final updated = (definition['blocks'] as List)[1] as Map;
+      expect(updated['root'], 'next');
+      expect((definition['blocks'] as List)[0]['text'], 'intro');
+    });
+
+    test('incremental projection matches a full replay', () {
+      final events = <SessionLogEvent>[
+        _call(1, 'call-a', 'ui_render', {'title': 'First', ..._tree()}),
+        _result(2, 'call-a', meta: {'ok': true}),
+        _call(3, 'call-b', 'ui_patch', {'uiId': 'call-a', 'baseVersion': 1, 'ops': []}),
+        _result(
+          4,
+          'call-b',
+          meta: {
+            'ok': true,
+            'ui': {'uiId': 'call-a', 'version': 2, ..._tree(root: 'next')},
+          },
+        ),
+      ];
+      final full = IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's');
+      final incremental = IntelligentUiProjection(hostId: 'h', sessionId: 's');
+      incremental.applyAll(events.take(2));
+      incremental.applyPending(events.skip(2));
+      expect(
+        incremental.artifacts.map((a) => '${a.uiId}:${a.version}:${a.definition['root']}'),
+        full.map((a) => '${a.uiId}:${a.version}:${a.definition['root']}'),
+      );
+    });
+
+    test('incremental PTC dispatch anchors to the assistant message seq', () {
+      // 实时流里增量投影只喂 assistant 锚点 + ptc-dispatch（chat_state 只收集
+      // 这些进增量队列）；originSeq 必须与全量重放一致，否则子卡挂不上工具行。
+      final assistant = _assistantWithToolCall(1, 'root-a', 'run_code');
+      final dispatch = UnknownEvent(2, DateTime(2026, 1, 1), 'tool/ptc-dispatch', {
+        'name': 'ui_render',
+        'subCallId': 'sub-a',
+        'rootCallId': 'root-a',
+        'arguments': _tree(),
+        'meta': {'ok': true},
+      });
+      final incremental = IntelligentUiProjection(hostId: 'h', sessionId: 's');
+      incremental.applyAll([assistant]);
+      incremental.applyPending([dispatch]);
+      expect(incremental.artifacts, hasLength(1));
+      expect(incremental.artifacts.single.originSeq, 1);
+    });
+
+    test('rejects widget html containing a script tag', () {
+      final events = <SessionLogEvent>[
+        _call(1, 'widget-a', 'ui_render_widget', {'html': '<script>alert(1)</script>'}),
+        _result(2, 'widget-a', meta: {'ok': true}),
+      ];
+      expect(IntelligentUiProjector.project(events, hostId: 'h', sessionId: 's'), isEmpty);
+    });
+  });
+  group('PortableUiAdapter', () {
+    ToolChatItem item(Object? meta) => ToolChatItem(
+      callId: 'call-portable',
+      name: 'render_ui',
+      arguments: '{}',
+      status: ToolStatus.succeeded,
+      seq: 9,
+      resultParts: const [],
+      meta: meta,
+    );
+
+    test('adapts a dsh-go/portable html envelope to a widget artifact', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'dsh-go/portable': {'kind': 'html', 'title': 'Portable card', 'html': '<p>hello</p>'},
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, IntelligentUiKind.widget);
+      expect(artifact.definition['html'], '<p>hello</p>');
+      expect(artifact.title, 'Portable card');
+    });
+
+    test('rejects scripts and unknown portable kinds', () {
+      expect(
+        PortableUiAdapter.fromTool(
+          item({
+            'dsh-go/portable': {'kind': 'html', 'html': '<script>x</script>'},
+          }),
+        ),
+        isNull,
+      );
+      expect(
+        PortableUiAdapter.fromTool(
+          item({
+            'dsh-go/portable': {'kind': 'react', 'html': '<p>x</p>'},
+          }),
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('IntelligentUiNativePreview', () {
+    IntelligentUiArtifact artifact(List<Map<String, Object?>> components, String root) => IntelligentUiArtifact(
+      kind: IntelligentUiKind.declarative,
+      hostId: 'h',
+      sessionId: 's',
+      uiId: 'native',
+      version: 1,
+      definition: {'root': root, 'components': components},
+      seq: 1,
+    );
+
+    test('accepts a simple Text/Stat/Table tree', () {
+      expect(
+        IntelligentUiNativePreview.supports(
+          artifact([
+            {
+              'id': 'root',
+              'type': 'Stack',
+              'children': ['title', 'stat'],
+            },
+            {
+              'id': 'title',
+              'type': 'Text',
+              'props': {'text': 'Title'},
+            },
+            {
+              'id': 'stat',
+              'type': 'Stat',
+              'props': {'label': 'Users', 'value': '42'},
+            },
+          ], 'root'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects charts and unsupported nodes', () {
+      expect(
+        IntelligentUiNativePreview.supports(
+          artifact([
+            {
+              'id': 'root',
+              'type': 'Chart',
+              'props': {'kind': 'bar'},
+            },
+          ], 'root'),
+        ),
+        isFalse,
+      );
+    });
+
+    testWidgets('renders Text markdown instead of raw link syntax', (tester) async {
+      final ui = artifact([
+        {
+          'id': 'root',
+          'type': 'Text',
+          'props': {'text': '正文包含一个 Markdown 链接：[Example](https://example.com)'},
+        },
+      ], 'root');
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          home: Scaffold(body: Builder(builder: (context) => IntelligentUiNativePreview.tryBuild(context, ui)!)),
+        ),
+      );
+      expect(
+        find.byWidgetPredicate((widget) => widget is Text && (widget.data?.contains('[Example]') ?? false)),
+        findsNothing,
+      );
+    });
+  });
+}

@@ -307,6 +307,21 @@ class ChatTranscript {
     ];
   }
 
+  /// Drops events hidden by a tool/result `surfaceOp: replace` record.
+  ///
+  /// 现状:真实线格式里 surfaceOp 只有字符串 'append',没有 startSeq/endSeq,
+  /// 所以下面的 Map 分支目前永不命中(替换裁剪由 projector 侧 ui_patch 完成)。
+  /// 等确认真实替换格式后再改这里,别按自造形状写测试。
+  void _applySurfaceOp(SessionLogEvent event) {
+    final op = event is ToolResultEvent ? event.surfaceOp : null;
+    if (op is! Map || asString(op['op']) != 'replace') return;
+    final start = asInt(op['startSeq']);
+    final end = asInt(op['endSeq']);
+    if (start == null && end == null) return;
+    _log.removeWhere((seq, _) =>
+        (start == null || seq >= start) && (end == null || seq <= end));
+  }
+
   /// Applies one event; returns `true` when [items] may have changed.
   bool apply(DshEvent event) {
     switch (event) {
@@ -320,6 +335,7 @@ class ChatTranscript {
         _drafts.clear();
         _runningOverride = null;
         for (final e in event.events) {
+          _applySurfaceOp(e);
           _log[e.seq] = e;
         }
         _recomputeTitle();
@@ -339,6 +355,7 @@ class ChatTranscript {
         final previousLast = _log.lastKey();
         final appended = previousLast == null || event.seq > previousLast;
         final fresh = event.seq > cursor;
+        _applySurfaceOp(event);
         _log[event.seq] = event;
         if (fresh) cursor = event.seq;
         switch (event) {
@@ -417,6 +434,7 @@ class ChatTranscript {
   /// Merges an older page from `DshClient.history(beforeSeq: oldestSeq)`.
   void prependHistory(HistoryPage page) {
     for (final e in page.events) {
+      _applySurfaceOp(e);
       _log[e.seq] = e;
     }
     hasMoreHistory = page.hasMore;
