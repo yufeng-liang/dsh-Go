@@ -21,7 +21,7 @@ dsh-go 不要求每个 UI 插件都适配自己的原生组件；聊天消息里
 5、6 两层的识别条件（一项不合格就继续看下一项）：
 
 - 第 5 层依次看 `presentationMeta.html`（字符串）、`presentationMeta.widget.html`（`widget` 是 Map 时取 `html`、`css`、`title`）、`presentationMeta.fragment`（字符串）。每一项都要非空，且不含脚本开标签：实现用不区分大小写的正则 `<\s*/?\s*script`，所以 `<script>`、`<script/>`、`<script`（没有闭合 `>`）一律拒收——不要按「包含 `<script` 就算」这种弱口径理解。
-- 第 4 层 envelope 的 `html` 与这三处 HTML 在出卡前都会先经 `_sanitizeWidgetHtml`（`app/lib/state/intelligent_ui.dart`）消毒：摘掉 `on*=` 内联事件属性与 `javascript:` 协议；这是宿主侧的渲染前消毒。渲染器把 widget 塞进 iframe 后还会过一次 DOMPurify，两层都不依赖插件自觉。
+- 第 4 层 envelope 的 `html` 与这三处 HTML 在出卡前都会先经 `_sanitizeWidgetHtml`（`app/lib/state/intelligent_ui.dart`）消毒：摘掉 `on*=` 内联事件属性（含 `<img/src=x/onerror=…>` 这类用 `/` 分隔属性的写法）、`javascript:`/`vbscript:`/`data:text/html` 伪协议，并整段删掉 `meta`/`base`/`link`/`object`/`embed`/`iframe` 等能改写 URL 基准或自动跳转的标签（实体编码变体由 `default-src 'none'` 的 CSP 兜底）；这是宿主侧的渲染前消毒。渲染器把 widget 塞进 iframe 后还会过一次 DOMPurify，两层都不依赖插件自觉。
 - 第 6 层看 `presentationMeta.card`（Map 自身作数据源，`title` 取 `card.title` 或外层 `presentationMeta.title`），或 `presentationMeta.kind == 'card'`（整个 `presentationMeta` 作数据源）。
 - 两层都产不出可用 HTML 时回到第 7 层，显示普通工具行。
 
