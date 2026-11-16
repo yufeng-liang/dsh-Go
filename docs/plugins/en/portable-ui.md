@@ -21,7 +21,7 @@ The parser must **skip** 1–3 so the portable adapter never competes with the n
 Layers 5 and 6 recognition (an item that does not qualify falls through to the next one):
 
 - Layer 5 tries `presentationMeta.html` (string), `presentationMeta.widget.html` (when `widget` is a Map, take `html`, `css`, `title`), then `presentationMeta.fragment` (string). Each candidate must be non-empty and must not contain a script start tag: the implementation uses the case-insensitive regex `<\s*/?\s*script`, so `<script>`, `<script/>` and an unclosed `<script` are all rejected — do not read this as the weaker "contains `<script`" rule.
-- Those three candidates are sanitized by `_sanitizeWidgetHtml` (`app/lib/state/intelligent_ui.dart`) before the card is built: inline `on*=` event attributes and the `javascript:` scheme are stripped; this is the pre-render sanitizing step.
+- The layer-4 envelope's `html` and those three candidates are all sanitized by `_sanitizeWidgetHtml` (`app/lib/state/intelligent_ui.dart`) before the card is built: inline `on*=` event attributes and the `javascript:` scheme are stripped; this is the host-side pre-render step. The renderer also runs the widget through DOMPurify once inside its iframe, so neither layer depends on the plugin behaving.
 - Layer 6 tries `presentationMeta.card` (the Map itself is the data source; `title` comes from `card.title` or the outer `presentationMeta.title`), or `presentationMeta.kind == 'card'` (the whole `presentationMeta` is the data source).
 - When neither layer yields usable HTML, the tool row falls back to layer 7.
 
@@ -44,7 +44,7 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
 ```
 
 - `kind` is `html` / `structured` / `media`; the host picks the adapter by kind.
-- HTML must be self-contained and must not execute remote scripts; external resources must be listed in `mediaOrigins`.
+- HTML must be self-contained and must not execute remote scripts. The media story is narrower than `mediaOrigins` suggests: in the chat card the widget content runs inside a nested sandbox iframe (the renderer wraps the widget document in an iframe with `sandbox="allow-scripts allow-forms"`), and that document's CSP is fixed to `img-src data: blob:` / `media-src data: blob:` and **never reads `mediaOrigins`**, so an `html` / `media` card cannot load any `https` image or video in chat. Only the share snapshot is a top-level document whose CSP is built from `policy` (see the snapshot section below); that is the only place where remote resources listed in `mediaOrigins` can appear.
 - For sharing, the host converts the serializable envelope into an off-screen snapshot; the capture WebView only opens the network when `policy` allows media, and the CSP comes from the same `policy`; it never depends on the plugin's web front-end state.
 - Arbitrary React components, host routing, or front-end global state do not belong in this protocol; use `dsh-go/view` or a WebView island instead.
 
@@ -55,7 +55,7 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
 1. `presentationMeta` is not a Map, or the tool result has no `seq` → no card.
 2. Skip layers 1–3: any non-null `dsh-go/view`, `dsh-go/media`, or `ui`, or a tool named `ui_render` / `ui_render_widget` / `ui_compose`.
 3. Layer 4: `dsh-go/portable` is a Map → map by `kind` (table below); a `dsh-go/portable` with an unknown `kind` or unusable content produces no card.
-4. Layer 5: `html` / `widget.html` / `fragment` → generic HTML (`widget` as a Map contributes `widget.html`, `widget.css`, `widget.title`).
+4. Layer 5: `html` / `widget.html` / `fragment` → generic HTML (`widget` as a Map contributes `widget.html`, `widget.css`, `widget.title`); a bare `html` or `fragment` has no title of its own and falls back to the outer `presentationMeta.title`.
 5. Layer 6: `card` / `kind == 'card'` → structured card.
 6. No match → no card; the tool stays an ordinary row.
 
@@ -65,7 +65,7 @@ A portable artifact does not only live on the chat row: `IntelligentUiProjection
 |---|---|---|
 | `html` | `html` (required, non-empty, must not match `<\s*/?\s*script`), optional `css`, optional `title` | emits `{html, css, initialHeight: 48}` |
 | `structured` | structured fields (table below) | emits structured HTML |
-| `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; the `<img>` still obeys `policy.allowMedia` / `policy.mediaOrigins` for external loading |
+| `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; whether the `<img>` really loads is decided by `policy` alone: the card needs both `allowMedia: true` and a `mediaOrigins` entry covering that origin, otherwise both the chat card (fixed iframe CSP) and the share snapshot (`snapshotAllowsRemoteMedia` false means `blockNetworkLoads`) show an empty image |
 
 `policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` is the tool result's `seq`, `originSeq` is the `seq` where the tool call first appeared (equal to `seq` when the chat row calls the adapter directly), and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:920`); empty HTML or HTML matching `<\s*/?\s*script` produces no card. CSS has exactly two sources: layer 4 with `kind: html` takes the envelope's own `css`, and layer 5 `widget.html` takes `widget.css`; a bare `presentationMeta.html` or `presentationMeta.fragment` never reads an outer `presentationMeta.css`.
 
@@ -81,6 +81,8 @@ Structured rendering (`structured` and `card` share `_structuredHtml`); every te
 | `markdown` | String | minimal Markdown: paragraphs, `#` / `##` / `###` headings, `**bold**`, `*italic*`, backtick code spans, fenced code blocks, `-` / `1.` lists, `[text](https://…)`; escape first, then wrap, so no raw tag survives |
 
 The 60000-character HTML limit applies to **every** HTML source: the envelope's `html`, `presentationMeta.html`, `widget.html`, `fragment` and structured rendering alike produce no card past it (nothing is truncated, and there is no half card). The 480000-character gate in `_validWidget` is a separate limit. A card where no field rendered anything also produces no card. CSS is one shared block (`.dsh-portable`, `.dsh-portable-metrics`, `.dsh-portable-table`, …) and `initialHeight` stays 48.
+
+The SDK has a much smaller separate budget: `CARD_MAX_BYTES = 8 * 1024` in `sdk/plugin-kit/lib/card.js` (documented as "≤ 8 KiB" in `README.md`) constrains only the `dsh-go/view` payload, and an oversized view is dropped outright; the `options.meta` channel that carries portable envelopes has no byte check. The 60000 here is the host's ceiling for producing a card, not a recommended size — to stay compatible with the SDK's `toolCard`, keep HTML under 8 KiB.
 
 Share snapshots follow the card's own `policy` (**implemented**):
 
