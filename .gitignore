@@ -42,3 +42,6 @@ apk-review*/
 after-*.png
 *-session.jsonl
 dash_*.html
+after_*.png
+apk-font/
+apk-final2/
