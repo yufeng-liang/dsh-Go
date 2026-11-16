@@ -253,7 +253,7 @@ class IntelligentUiCardPlaceholder extends StatelessWidget {
 }
 
 /// 智能 UI 卡的标题行留白:比普通卡紧凑(默认上 16 / 下 8 → 上 8 / 下 4)。
-const EdgeInsets _compactHeaderPadding = EdgeInsets.fromLTRB(ChatCard.inset, 8, ChatCard.inset, 4);
+const EdgeInsets _compactHeaderPadding = EdgeInsets.fromLTRB(ChatCard.inset, 8, ChatCard.inset, 0);
 
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({
