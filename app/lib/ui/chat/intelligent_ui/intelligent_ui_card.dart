@@ -252,7 +252,7 @@ class IntelligentUiCardPlaceholder extends StatelessWidget {
   }
 }
 
-/// 智能 UI 卡的标题行留白:比普通卡紧凑(默认上 16 / 下 8 → 上 8 / 下 4)。
+/// 智能 UI 卡的标题行留白:比普通卡紧凑(默认上 16 / 下 8 → 上 8 / 下 0)。
 const EdgeInsets _compactHeaderPadding = EdgeInsets.fromLTRB(ChatCard.inset, 8, ChatCard.inset, 0);
 
 class IntelligentUiCard extends ConsumerStatefulWidget {
@@ -590,7 +590,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         final height = parsed.height;
         if (height == null || !height.isFinite) return;
         debugPrint('diui resize: $height -> _height');
-        setState(() => _height = height.ceil().clamp(56, _maxHeight).toInt());
+        setState(() => _height = height.ceil().clamp(50, _maxHeight).toInt());
         break;
       case 'error':
         _setError(parsed.data['message'] is String ? parsed.data['message'] as String : 'renderer error');
@@ -798,10 +798,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
             ? IconButton(
                 onPressed: _openFullscreen,
                 tooltip: l10n.activityStepFullScreen,
-                // 默认 48dp 触控盒会把标题行撑高,留白看起来很大;压到 32dp。
+                // 默认 48dp 触控盒会把标题行撑高;压到 40dp(仍高于 40dp 可用性)。
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                constraints: const BoxConstraints.tightFor(width: 40, height: 40),
                 icon: const Icon(Icons.fullscreen, size: 20),
               )
             : null,
@@ -883,11 +884,12 @@ class _ImmersiveCard extends StatelessWidget {
                   const Spacer(),
                 if (onFullscreen != null)
                   SizedBox(
-                    width: 28,
-                    height: 28,
+                    width: 32,
+                    height: 32,
                     child: IconButton(
                       onPressed: onFullscreen,
                       padding: EdgeInsets.zero,
+                      style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                       tooltip: context.l10n.activityStepFullScreen,
                       icon: const Icon(Icons.fullscreen, size: 18),
                     ),

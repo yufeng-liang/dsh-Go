@@ -128,14 +128,17 @@ class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
       if (_keepAliveLru.remove(this)) updateKeepAlive();
       return;
     }
-    if (_keepAliveLru.add(this)) {
-      while (_keepAliveLru.length > _maxKeepAlive) {
-        final oldest = _keepAliveLru.first;
-        _keepAliveLru.remove(oldest);
-        if (oldest != this && oldest.mounted) oldest.updateKeepAlive();
-      }
-      updateKeepAlive();
+    // Set 保持插入序:先移除再插回末尾,把「最早注册」刷新成「最近查看」。
+    // 只在首次注册时处理会退化成 FIFO,把当前屏幕上的卡逐出。
+    _keepAliveLru.remove(this);
+    _keepAliveLru.add(this);
+    while (_keepAliveLru.length > _maxKeepAlive) {
+      final oldest = _keepAliveLru.first;
+      if (oldest == this) break; // 永不逐出自己
+      _keepAliveLru.remove(oldest);
+      if (oldest.mounted) oldest.updateKeepAlive();
     }
+    updateKeepAlive();
   }
 
   @override
