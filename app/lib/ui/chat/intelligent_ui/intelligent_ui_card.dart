@@ -593,9 +593,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       case 'resize':
         final height = parsed.height;
         if (height == null || !height.isFinite) return;
-        // +6 兜底:测量仍可能少算末行溢出(见 shell/renderer 的 measure 修正)
-        final next = (height.ceil() + 8).clamp(50, _maxHeight).toInt();
-        debugPrint('diui resize: $height -> $next (max=$_maxHeight)');
+        // +2 兜底:测量仍可能少算末行溢出(见 shell/renderer 的 measure 修正)
+        final next = (height.ceil() + 2).clamp(50, _maxHeight).toInt();
+        if (kDebugMode) debugPrint('diui resize: $height -> $next (max=$_maxHeight)');
         // 1-2px 的回填不值得重建平台视图(否则每帧起一次 180ms 动画)。
         if ((next - _height).abs() <= 2) return;
         setState(() => _height = next);
