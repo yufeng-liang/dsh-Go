@@ -206,6 +206,10 @@ export function toolCard<A, V>(
   options?: { maxBytes?: number; meta?: (args: A, value: V) => Record<string, unknown>; onError?: (error: unknown) => void },
 ): (args: A, value: V) => Record<string, JsonValue>
 
+// ── portable cards (lib/portable.js) ──────────────────────────────────────
+
+export * from './portable.js'
+
 // ── caps (lib/caps.js) ────────────────────────────────────────────────────
 
 export const SURFACES: readonly Surface[]

@@ -67,7 +67,7 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 | `structured` | 结构化字段（见下表） | 转成结构化 HTML |
 | `media` | `url`（只接受 `https://` 前缀） | 先按 HTML 属性转义再拼进 `src`（引号转成 `&quot;`），url 跳不出 `src` 属性——不要假设原始 url 的引号不会逃逸；生成 `<img>` 后聊天卡直接加载（iframe CSP 恒放行 `https:`），分享快照则要 `snapshotAllowsRemoteMedia` 为真（`allowMedia` + 覆盖该源的 `mediaOrigins`），否则 `blockNetworkLoads` 关网变空图 |
 
-`policy` 的取法：第 4 层用 envelope 里的 `policy`，第 5、6 层用外层 `presentationMeta['policy']`；不是 Map 时按空 map 处理。产物统一是 `IntelligentUiKind.widget`、`uiId` 取工具调用的 `callId`、`version` 为 1、`seq` 取工具结果的 `seq`、`originSeq` 取这次工具调用第一次出现的 `seq`（聊天行直接走适配器时与 `seq` 相同）；`definition` 必须通过 `IntelligentUiProjector._validWidget`（`app/lib/state/intelligent_ui.dart:920`），`html` 为空或匹配 `<\s*/?\s*script` 直接不产卡。CSS 只有两个来源：第 4 层 `kind: html` 带 envelope 自己的 `css`，第 5 层 `widget.html` 带 `widget.css`；裸 `presentationMeta.html` 与 `fragment` 不读外层 `presentationMeta.css`。
+`policy` 的取法：第 4 层用 envelope 里的 `policy`，第 5、6 层用外层 `presentationMeta['policy']`；不是 Map 时按空 map 处理。产物统一是 `IntelligentUiKind.widget`、`uiId` 取工具调用的 `callId`、`version` 为 1、`seq` 取工具结果的 `seq`、`originSeq` 取这次工具调用第一次出现的 `seq`（聊天行直接走适配器时与 `seq` 相同）；`definition` 必须通过 `IntelligentUiProjector._validWidget`（`app/lib/state/intelligent_ui.dart:920`），`html` 为空或匹配 `<\s*/?\s*script` 直接不产卡。CSS 来源有三处：第 4 层 `kind: html` 带 envelope 自己的 `css`，第 5 层 `widget.html` 带 `widget.css`，结构化卡的 `style` 钩子另插一段 `<style>`（≤2000 字符，命中黑名单整段丢弃；`accent` 以 CSS 变量生效）；裸 `presentationMeta.html` 与 `fragment` 不读外层 `presentationMeta.css`。
 
 结构化渲染（`structured`、`card` 共用一套 `_structuredHtml`），所有文本先 `HtmlEscape` 转义：
 
@@ -101,9 +101,10 @@ SDK 侧另有一层更小的预算：`sdk/plugin-kit/lib/card.js` 的 `CARD_MAX_
 
 ## 尚未实现
 
-- `card` 的样式与图表扩展：现在只有基础字段渲染，`metrics` / `tables` 之外没有样式钩子和图表类型。
-- SDK 文档与插件模板里的协议落地：`sdk/plugin-kit` 还没教插件作者怎么产出 `presentationMeta`。
+- `card` 的交互能力：便携卡是静态 HTML，没有表单、按钮回调或原生控件；需要交互的插件要走 intelligent-ui 的 declarative 树或自带 WebView 页面。
+- `charts` 之外的图形：只支持 `bar` / `line` / `pie` 三种内联 SVG，没有散点、热力图、地图叠加等；SDK 的 `portableCard` 也只构造七类基础键，`charts` / `accent` / `style` 需手写 envelope。
+- 数值与日期的本地化格式：指标与表单元格按原样转字符串，没有千分位、单位换算或日期格式化。
 
 ## 适配优先级
 
-通用 `html` / `widget.html` 自动识别已完成（覆盖最多现有插件），`card` / `kind` 结构化适配也已完成，剩下把协议写进 SDK 文档与插件模板。intelligent-ui 的 `ui` artifact 是优先级 3 的特例，已有完整实现。
+通用 `html` / `widget.html` 自动识别已完成（覆盖最多现有插件），`card` / `kind` 结构化适配与图表、样式钩子也已完成；`sdk/plugin-kit/lib/portable.js` 提供 `portableCard` / `portableHtml` / `portableWidget` / `portableFragment` / `portableMedia` / `portableMeta` 六个构造器，插件作者可直接产出 portable envelope。intelligent-ui 的 `ui` artifact 是优先级 3 的特例，已有完整实现。

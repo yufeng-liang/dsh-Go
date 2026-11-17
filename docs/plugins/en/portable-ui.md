@@ -67,7 +67,7 @@ A portable artifact does not only live on the chat row: `IntelligentUiProjection
 | `structured` | structured fields (table below) | emits structured HTML |
 | `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; the chat card then loads the image directly (the iframe CSP always allows `https:`), while the share snapshot needs `snapshotAllowsRemoteMedia` to be true (`allowMedia` plus a `mediaOrigins` entry covering that origin), otherwise `blockNetworkLoads` leaves an empty image |
 
-`policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` is the tool result's `seq`, `originSeq` is the `seq` where the tool call first appeared (equal to `seq` when the chat row calls the adapter directly), and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:920`); empty HTML or HTML matching `<\s*/?\s*script` produces no card. CSS has exactly two sources: layer 4 with `kind: html` takes the envelope's own `css`, and layer 5 `widget.html` takes `widget.css`; a bare `presentationMeta.html` or `presentationMeta.fragment` never reads an outer `presentationMeta.css`.
+`policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` is the tool result's `seq`, `originSeq` is the `seq` where the tool call first appeared (equal to `seq` when the chat row calls the adapter directly), and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:920`); empty HTML or HTML matching `<\s*/?\s*script` produces no card. CSS now has three sources: layer 4 with `kind: html` takes the envelope's own `css`, layer 5 `widget.html` takes `widget.css`, and a structured card's `style` hook inserts one more `<style>` block (≤2000 characters, dropped entirely when it matches the blacklist; `accent` applies through CSS variables); a bare `presentationMeta.html` or `presentationMeta.fragment` never reads an outer `presentationMeta.css`.
 
 Structured rendering (`structured` and `card` share `_structuredHtml`); every text is `HtmlEscape`d first:
 
@@ -101,9 +101,10 @@ Cards produced by `dsh-go/portable` reuse the same path as intelligent-ui cards:
 
 ## Not implemented yet
 
-- `card` styling and chart extensions: only the base fields render today; there are no style hooks or chart types beyond `metrics` / `tables`.
-- The protocol in SDK docs and plugin templates: `sdk/plugin-kit` does not yet show plugin authors how to emit `presentationMeta`.
+- `card` interactivity: portable cards are static HTML with no forms, button callbacks or native controls; plugins that need interaction go through the intelligent-ui declarative tree or ship their own WebView page.
+- Graphics beyond `charts`: only `bar` / `line` / `pie` inline SVG, with no scatter, heatmap or map overlays; the SDK's `portableCard` also builds only the seven base keys, so `charts` / `accent` / `style` need a hand-written envelope.
+- Localised formatting: metrics and cells stringify values as-is, with no thousands separators, unit conversion or date formatting.
 
 ## Adaptation order
 
-Generic `html` / `widget.html` auto-detection is done (it covers the most existing plugins) and `card` / `kind` structured cards are done; what remains is standardizing the protocol in SDK docs and plugin templates. The intelligent-ui `ui` artifact is the priority-3 special case and is already fully implemented.
+Generic `html` / `widget.html` auto-detection is done (it covers the most existing plugins), and so are `card` / `kind` structured cards with chart and style hooks; `sdk/plugin-kit/lib/portable.js` ships `portableCard` / `portableHtml` / `portableWidget` / `portableFragment` / `portableMedia` / `portableMeta`, so plugin authors can emit a portable envelope directly. The intelligent-ui `ui` artifact is the priority-3 special case and is already fully implemented.

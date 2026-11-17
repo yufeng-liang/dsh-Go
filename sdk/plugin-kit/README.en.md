@@ -14,6 +14,43 @@ The author kit for dsh-go native plugins. Zero runtime dependencies, Node 22.19+
 | Test host | `@dsh-go/plugin-kit/testing` → `createTestHost()` | Run your `apply(ctx)` without DSH: manifest, invoke, views, data, deferred results — answers like the bridge |
 | Checker | `bin/check.mjs`; `@dsh-go/plugin-kit/check` | Manifest (the bridge's parser) + views (a line-by-line twin of the app's parser, the app's words) + `--load` for the host half |
 | Schemas | `schema/*.schema.json` | Machine-readable protocol and view definitions; `lib/json-schema.js` validates against them |
+| Portable cards | `@dsh-go/plugin-kit/portable` | The view-free card protocol (layers 4–5): structured / HTML / widget / fragment / media, clamped to the app's limits, `null` when an input cannot ship |
+
+## Portable cards (layers 4–5)
+
+`presentationMeta` also carries a view-free card protocol ([docs/plugins/portable-ui.md](../../docs/plugins/portable-ui.md)). The app recognises seven layers and stops at the first hit: layers 1–3 are `dsh-go/view`, `dsh-go/media` and `ui`; when one of them is present the portable keys are not read at all.
+
+| Layer | Key | Here |
+|---|---|---|
+| 4 | `dsh-go/portable`, `kind` is `html` / `structured` / `media` | `portableHtml()` `portableCard()` `portableMedia()` |
+| 5 | `html` / `widget.html` / `fragment` | `portableWidget()` `portableFragment()` (the bare `html` key is just a string) |
+
+```js
+import { portableMeta, portableCard } from '@dsh-go/plugin-kit/portable'
+
+export const meta = portableMeta((_args, value) => portableCard({
+  title: 'Usage today',
+  metrics: [{ label: 'Requests', value: value.calls, delta: '+12%', trend: 'up' }],
+  tables: [{ columns: ['Model', 'Calls'], rows: [['flash', 12], ['pro', 3]] }],
+  markdown: 'Over **100** requests get rate limited.',
+}))
+// meta(...) → { 'dsh-go/portable': { kind: 'structured', … } }
+```
+
+| Function | Produces |
+|---|---|
+| `portableCard(spec, { title, policy })` | `{ 'dsh-go/portable': { kind: 'structured', title?, fields?, metrics?, tables?, items?, markdown?, policy? } }` |
+| `portableHtml(html, { css, title, policy })` | `{ 'dsh-go/portable': { kind: 'html', html, css?, title?, policy? } }` |
+| `portableWidget(html, { css, title, policy })` | `{ widget: { html, css?, title? }, policy? }` |
+| `portableFragment(html, { title, policy })` | `{ fragment, title?, policy? }` |
+| `portableMedia(url, { title, policy })` | `{ 'dsh-go/portable': { kind: 'media', url, title?, policy? } }` |
+| `portableMeta(build, { meta, onError })` | Wraps any of the above as `(args, value) => Record<string, JsonValue>` |
+
+- The five builders only decide whether an input can ship: anything unusable gives `null`, never a throw. `portableMeta` adds the last safety net: a builder that throws, returns `null`, or returns a non-plain object (cycles included) degrades to just the extra keys from `options.meta`, and `{}` when there are none (no card, the app shows its generic tool row). On a key clash the builder wins.
+- Lengths match the app exactly (Dart `String.length`, i.e. UTF-16 code units — the same number as JS `String.length`): title 200 (keep the first 199 characters plus `…`), cell 2000 (same), tables 50 rows × 12 columns (empty rows do not count, cells past the header are dropped), one HTML document 60000 (over that the whole card is dropped, **never truncated**), and html + css of one widget card 480000.
+- Security: HTML must be self-contained and **never runs remote scripts** — any HTML containing `<script` (also `<script/>`, `<ScRiPt>`) gives `null`. The app sanitises again before storing: `on*=` event attributes are stripped (including the slash form `…/onerror=`), `javascript:` / `vbscript:` / `data:text/html` schemes are removed, `meta`/`base`/`link`/`object`/`embed`/`iframe`/`frame`/`frameset` are deleted, and the renderer adds DOMPurify plus a `default-src 'none'` CSP. The SDK never rewrites your markup; only the app's pass protects the reader.
+- Media accepts `https://` only. The chat card iframe builds its CSP from `policy`: by default only `img-src data: blob:` is allowed, so https images do not load in chat; `{ allowMedia: true }` adds `https:`, or list explicit origins in `mediaOrigins`. Share snapshots follow the same `policy`. Layer 4 writes `policy` inside the envelope, layer 5 puts it on `presentationMeta` — `options.policy` is wired on `portableCard()`, `portableHtml()`, `portableWidget()`, `portableFragment()` and `portableMedia()`. The app reads `allowMedia` / `mediaOrigins` / `mapTiles` / `openLinkOrigins`; the kit applies no key whitelist and passes the rest through (a non-plain object, a function or a cycle drops the whole policy without affecting the card). This envelope expresses images only — for video use the layer-2 `dsh-go/media` media card, which wants `items`, so this kit exports `PORTABLE_MEDIA_KEY` as a constant and never builds it.
+- Structured cards also accept `charts` / `accent` / `style`; these builders do not construct them — write the envelope by hand when you need them.
 
 ## check
 

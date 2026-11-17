@@ -17,6 +17,10 @@
       "types": "./types/check.d.ts",
       "default": "./lib/check.js"
     },
+    "./portable": {
+      "types": "./types/portable.d.ts",
+      "default": "./lib/portable.js"
+    },
     "./testing": {
       "types": "./types/testing.d.ts",
       "default": "./lib/testing.js"

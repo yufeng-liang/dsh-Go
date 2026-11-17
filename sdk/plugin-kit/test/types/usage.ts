@@ -1,5 +1,5 @@
 // Type-level test: compiled with tsc --noEmit by test/sync.test.js.
-import { stack, row, metric, chart, list, keyValue, progress, table, actions, image, text, callout, confirm, options, bind, action, toolCard, localize, adaptView, effects, type View, type DshGoService, type InvokeHandler, type Manifest } from '../../types/index.js'
+import { stack, row, metric, chart, list, keyValue, progress, table, actions, image, text, callout, confirm, options, bind, action, toolCard, portableCard, portableMeta, PORTABLE_KEY, localize, adaptView, effects, type View, type DshGoService, type InvokeHandler, type Manifest } from '../../types/index.js'
 import { createTestHost } from '../../types/testing.js'
 
 const view: View = stack([
@@ -24,6 +24,20 @@ metric({ label: 'x', value: 1, tone: 'red' })
 
 const card = toolCard((_args: { city: string }, value: { t: number }) => stack([metric({ label: 'T', value: value.t })]))
 const meta: Record<string, unknown> = card({ city: 'x' }, { t: 1 })
+
+// Portable cards: the builder returns an envelope, the wrapper keeps it lossless.
+const portable = portableMeta(
+  (_args: Record<string, never>, value: { calls: number }) => portableCard({
+    title: '今日用量',
+    metrics: [{ label: '请求', value: value.calls, trend: 'up' }],
+  }),
+  { meta: () => ({ extra: true }), onError: (error) => String(error) },
+)
+const portableMetaOut: Record<string, unknown> = portable({}, { calls: 3 })
+const portableEnvelope = portableMetaOut[PORTABLE_KEY]
+void portableEnvelope
+// @ts-expect-error trend is up / down / flat only
+portableCard({ metrics: [{ label: 'x', value: 1, trend: 'sideways' }] })
 
 const manifest: Manifest = {
   v: 1,
