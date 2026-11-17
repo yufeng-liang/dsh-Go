@@ -312,11 +312,15 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   final Map<String, String> _biliCovers = {};
   final Set<String> _biliFetching = {};
 
-  int get _maxHeight {
-    final value = widget.artifact.policy['maxHeight'];
-    final raw = value is num ? value.toInt() : 4000;
-    return raw.clamp(100, 4000).toInt();
-  }
+  /// 卡片显示高度上限。
+  ///
+  /// policy 里的 maxHeight 是上游给的软上限（实测 compose 卡被下发 2400），
+  /// 但同一张卡内容实测到 3343px，按 policy 裁切会把正文末尾整段吞掉
+  /// （表格末行被切就是它）。这里统一抬到 [_hardMaxHeight]，
+  /// 再长的部分交给全屏页查看。
+  static const int _hardMaxHeight = 6000;
+
+  int get _maxHeight => _hardMaxHeight;
 
   @override
   void initState() {
