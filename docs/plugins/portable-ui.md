@@ -50,7 +50,7 @@ dsh-go 不要求每个 UI 插件都适配自己的原生组件；聊天消息里
 
 ## 当前 App 实现状态
 
-`PortableUiAdapter.fromTool`（`app/lib/state/intelligent_ui.dart:156`）在投影聊天行时（`app/lib/ui/chat/chat_rows.dart:234`）识别工具结果，命中后转换成受限的智能 UI widget 卡片，与 intelligent-ui 卡片共用同一条挂载路径（按 `callId` / `seq` 合并）。识别顺序命中即停：
+`PortableUiAdapter.fromTool`（`app/lib/state/intelligent_ui.dart:177`）在投影聊天行时（`app/lib/ui/chat/chat_rows.dart:234`）识别工具结果，命中后转换成受限的智能 UI widget 卡片，与 intelligent-ui 卡片共用同一条挂载路径（按 `callId` / `seq` 合并）。识别顺序命中即停：
 
 1. `presentationMeta` 不是 Map，或工具结果没有 `seq` → 不产卡。
 2. 跳过第 1–3 层：`dsh-go/view`、`dsh-go/media`、`ui` 任一存在且非 null，或工具名是 `ui_render` / `ui_render_widget` / `ui_compose`。
@@ -67,7 +67,7 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 | `structured` | 结构化字段（见下表） | 转成结构化 HTML |
 | `media` | `url`（只接受 `https://` 前缀） | 先按 HTML 属性转义再拼进 `src`（引号转成 `&quot;`），url 跳不出 `src` 属性——不要假设原始 url 的引号不会逃逸；生成 `<img>` 后聊天卡直接加载（iframe CSP 恒放行 `https:`），分享快照则要 `snapshotAllowsRemoteMedia` 为真（`allowMedia` + 覆盖该源的 `mediaOrigins`），否则 `blockNetworkLoads` 关网变空图 |
 
-`policy` 的取法：第 4 层用 envelope 里的 `policy`，第 5、6 层用外层 `presentationMeta['policy']`；不是 Map 时按空 map 处理。产物统一是 `IntelligentUiKind.widget`、`uiId` 取工具调用的 `callId`、`version` 为 1、`seq` 取工具结果的 `seq`、`originSeq` 取这次工具调用第一次出现的 `seq`（聊天行直接走适配器时与 `seq` 相同）；`definition` 必须通过 `IntelligentUiProjector._validWidget`（`app/lib/state/intelligent_ui.dart:920`），`html` 为空或匹配 `<\s*/?\s*script` 直接不产卡。CSS 来源有三处：第 4 层 `kind: html` 带 envelope 自己的 `css`，第 5 层 `widget.html` 带 `widget.css`，结构化卡的 `style` 钩子另插一段 `<style>`（≤2000 字符，命中黑名单整段丢弃；`accent` 以 CSS 变量生效）；裸 `presentationMeta.html` 与 `fragment` 不读外层 `presentationMeta.css`。
+`policy` 的取法：第 4 层用 envelope 里的 `policy`，第 5、6 层用外层 `presentationMeta['policy']`；不是 Map 时按空 map 处理。产物统一是 `IntelligentUiKind.widget`、`uiId` 取工具调用的 `callId`、`version` 为 1、`seq` 取工具结果的 `seq`、`originSeq` 取这次工具调用第一次出现的 `seq`（聊天行直接走适配器时与 `seq` 相同）；`definition` 必须通过 `IntelligentUiProjector._validWidget`（`app/lib/state/intelligent_ui.dart:1154`），`html` 为空或匹配 `<\s*/?\s*script` 直接不产卡。CSS 来源有三处：第 4 层 `kind: html` 带 envelope 自己的 `css`，第 5 层 `widget.html` 带 `widget.css`，结构化卡的 `style` 钩子另插一段 `<style>`（≤2000 字符，命中黑名单整段丢弃；`accent` 以 CSS 变量生效）；裸 `presentationMeta.html` 与 `fragment` 不读外层 `presentationMeta.css`。
 
 结构化渲染（`structured`、`card` 共用一套 `_structuredHtml`），所有文本先 `HtmlEscape` 转义：
 
