@@ -43,7 +43,7 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
 ```
 
 - `kind` is `html` / `structured` / `media`; the host picks the adapter by kind.
-- HTML must be self-contained and must not execute remote scripts. Media now has two paths: in the chat card the widget content runs inside a nested sandbox iframe (the renderer wraps the widget document in an iframe with `sandbox="allow-scripts allow-forms"`), and that document's CSP now always includes `img-src data: blob: https:`, `font-src data: https:` and `media-src data: blob: https:` (plus the origins in `policy.cdn`), so `html` / `widget` / `media` cards **load `https` images, fonts, audio and video directly in chat** and no longer need `mediaOrigins`; `script-src` stays gated by the offline flag and `policy.cdn`, so remote scripts never run. The share snapshot is a top-level document whose CSP is built from `policy` (see the snapshot section below); there, network access is still controlled by `allowMedia` / `mediaOrigins`.
+- HTML must be self-contained and must not execute remote scripts. Media now has two paths: in the chat card the widget content runs inside a nested sandbox iframe (the renderer wraps the widget document in an iframe with `sandbox="allow-scripts allow-forms"`), and that document's CSP now always includes `img-src data: blob: https:`, `font-src data: https:` and `media-src data: blob: https:` (`policy.cdn` would add origins here too, but the Dart `_postArtifact` always sends an empty `cdn`, so in practice only the `https:` wildcard applies), so `html` / `widget` / `media` cards **load `https` images, fonts, audio and video directly in chat** and no longer need `mediaOrigins`; `script-src` stays gated by the offline flag and `policy.cdn`, so remote scripts never run. The share snapshot is a top-level document whose CSP is built from `policy` (see the snapshot section below); there, network access is still controlled by `allowMedia` / `mediaOrigins`.
 - For sharing, the host converts the serializable envelope into an off-screen snapshot; the capture WebView only opens the network when `policy` allows media, and the CSP comes from the same `policy`; it never depends on the plugin's web front-end state.
 - Card height is measured by the host: `policy.maxHeight` **does not clip anything** today (the host hard cap is 6000 px) and tall cards expand into the fullscreen view, so do not rely on that key for height control.
 - Arbitrary React components, host routing, or front-end global state do not belong in this protocol; use `dsh-go/view` or a WebView island instead.
@@ -73,12 +73,12 @@ Structured rendering (`structured` and `card` share `_structuredHtml`); every te
 
 | key | input | output |
 |---|---|---|
-| `title` | String | `<h2>` |
+| `title` | String | card header only; the body no longer repeats it as `<h2>` |
 | `fields` | `[{label, value}]` | one row per entry |
 | `metrics` | `[{label, value, delta?, trend?}]` | metric tiles; `trend` is `up` / `down` / `flat`, colored by class |
 | `tables` | `[{title?, columns: [String], rows: [[…]]}]` | `<table>`, at most 50 rows × 12 columns, truncated beyond that |
 | `items` | list of String or `{label, value}` | `<ul><li>` |
-| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | inline SVG; `type` is `bar` (default) / `line` / `pie`; at most 24 labels and 6 series, missing values become 0, the rest is truncated |
+| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | inline SVG; `type` is `bar` (default) / `line` / `pie`; at most 24 labels and 6 series, missing values become 0, the rest is truncated; `pie` draws only the first series |
 | `accent` | `#rgb` / `#rrggbb` | emitted as the `--dsh-portable-accent` and `--dsh-portable-c1` CSS variables; invalid values are dropped silently |
 | `style` | String | injected as a `<style>` block around the card; a value matching `</style` / `@import` / `expression(` / `javascript:` is dropped entirely, otherwise it is clipped to 2000 characters with `<` stripped |
 | `markdown` | String | minimal Markdown: paragraphs, `#` / `##` / `###` headings, `**bold**`, `*italic*`, backtick code spans, fenced code blocks, `-` / `1.` lists, `[text](https://…)`; escape first, then wrap, so no raw tag survives |
@@ -89,7 +89,7 @@ The SDK has a much smaller separate budget: `CARD_MAX_BYTES = 8 * 1024` in `sdk/
 
 Share snapshots follow the card's own `policy` (**implemented**):
 
-- `snapshotAllowsRemoteMedia(policy)` in `app/lib/ui/share/intelligent_ui_snapshot.dart:107` lets `allowMedia` / `mediaOrigins` decide whether the network opens; the CSP built from the same `policy` (same file, `:129`) then decides which origins are reachable.
+- `snapshotAllowsRemoteMedia(policy)` in `app/lib/ui/share/intelligent_ui_snapshot.dart:107` opens the network when `allowMedia` is true **or** `mediaOrigins` covers that origin (an OR, not an AND); the CSP built from the same `policy` (same file, `:129`) then decides which origins are reachable.
 - `blockNetworkLoads = !remoteMedia` in `app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/intelligentui/IntelligentUiSnapshotPlugin.kt:147`; when the network is on, the capture waits `MEDIA_SETTLE_MS = 5000L` (same file, `:307`) instead of `PAGE_SETTLE_MS`.
 - History: b30660bd (snapshots open the network per policy) and 3c92b37f (renderer media allowed by policy, offline only as the default).
 

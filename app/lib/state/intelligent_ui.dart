@@ -262,13 +262,22 @@ class PortableUiAdapter {
     );
   }
 
-  /// 标题统一收口：去空白、空串归一为 null、超长按上限截断。
+  /// 标题统一收口：去空白、空串归一为 null、超长按上限截断（不切开代理对）。
   static String? _clipTitle(String? value) {
     final title = value?.trim();
     if (title == null || title.isEmpty) return null;
     if (title.length <= _maxTitleChars) return title;
-    return '${title.substring(0, _maxTitleChars - 1)}…';
+    return '${_truncateBeforeEllipsis(title, _maxTitleChars)}…';
   }
+
+  /// 截到 max - 1 个 code unit 再补省略号；末位是高代理时再退一位，避免半个 emoji。
+  static String _truncateBeforeEllipsis(String text, int max) {
+    var end = max - 1;
+    if (end > 0 && _isHighSurrogate(text.codeUnitAt(end - 1))) end -= 1;
+    return text.substring(0, end);
+  }
+
+  static bool _isHighSurrogate(int unit) => unit >= 0xD800 && unit <= 0xDBFF;
 
   /// 统一产物：widget 卡，uiId 用调用 id，definition 必须过 widget 校验。
   static IntelligentUiArtifact? _artifact(
@@ -376,8 +385,7 @@ class PortableUiAdapter {
   /// 所有文本先转义再套标签，插件给的内容不会被当成标签解析。
   static String? _structuredHtml(Map<String, Object?> data) {
     final buffer = StringBuffer();
-    final title = IntelligentUiProjector._asString(data['title']);
-    if (title != null && title.isNotEmpty) buffer.write('<h2>${_text(title)}</h2>');
+    // 卡片标题由卡头统一渲染（ChatCard title），正文不再重复写 <h2>，否则每张结构化卡标题都双显。
 
     for (final field in IntelligentUiProjector._asList(data['fields'])) {
       final map = IntelligentUiProjector._asMap(field);
@@ -410,7 +418,10 @@ class PortableUiAdapter {
     for (final chart in IntelligentUiProjector._asList(data['charts'])) {
       final map = IntelligentUiProjector._asMap(chart);
       if (map == null) continue;
-      buffer.write(_chartHtml(map));
+      final chunk = _chartHtml(map);
+      // 图表块体积大：超出总上限就到此为止，别让整张卡被 60000 上限陪葬。
+      if (chunk.isNotEmpty && buffer.length + chunk.length > _maxHtmlChars) break;
+      buffer.write(chunk);
     }
 
     for (final table in IntelligentUiProjector._asList(data['tables'])) {
@@ -464,7 +475,9 @@ class PortableUiAdapter {
     final markdown = IntelligentUiProjector._asString(data['markdown']);
     if (markdown != null && markdown.trim().isNotEmpty) buffer.write(_markdownHtml(markdown));
 
-    if (buffer.isEmpty) return null;
+    // 只有标题的卡也要出（标题在卡头），不能因为正文为空就整卡丢掉。
+    final hasTitle = IntelligentUiProjector._asString(data['title'])?.trim().isNotEmpty ?? false;
+    if (buffer.isEmpty && !hasTitle) return null;
     final accent = IntelligentUiProjector._asString(data['accent']);
     final accentColor = accent != null && _accentPattern.hasMatch(accent.trim()) ? accent.trim() : '';
     final styleAttribute =
@@ -481,6 +494,8 @@ class PortableUiAdapter {
 
   /// 坐标数值格式化：去掉多余的 .0，SVG 属性保持短小。
   static String _chartNumber(double value) {
+    // 极端量级会让坐标算出 NaN / Infinity，SVG 属性解析失败会整块不画，统一落回 0。
+    if (!value.isFinite) return '0';
     final text = value.toStringAsFixed(1);
     return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
   }
@@ -525,7 +540,10 @@ class PortableUiAdapter {
       final suffix = unit.isEmpty ? '' : ' (${_text(unit)})';
       buffer.write('<p class="dsh-portable-chart-title">${_text(title)}$suffix</p>');
     }
-    buffer.write(type == 'pie' ? _pieChart(series.first) : _xyChart(labels, series, type == 'line'));
+    final svg = type == 'pie' ? _pieChart(series.first) : _xyChart(labels, series, type == 'line');
+    // 画不出来（例如饼图全 0）时整块不渲染，别只留一排图例。
+    if (svg.isEmpty) return '';
+    buffer.write(svg);
     buffer.write('<div class="dsh-portable-legend">');
     if (type == 'pie') {
       for (var i = 0; i < labels.length && i < series.first.length; i++) {
@@ -608,7 +626,7 @@ class PortableUiAdapter {
     for (final value in values) {
       total += value.abs();
     }
-    if (total <= 0) return '';
+    if (total <= 0 || !total.isFinite) return '';
     final box = '<svg viewBox="0 0 ${width.toInt()} ${height.toInt()}" role="img">';
     final buffer = StringBuffer(box);
     var angle = -math.pi / 2;
@@ -764,7 +782,7 @@ class PortableUiAdapter {
       _ => null,
     };
     if (text == null || text.length <= _maxCellChars) return text;
-    return '${text.substring(0, _maxCellChars - 1)}…';
+    return '${_truncateBeforeEllipsis(text, _maxCellChars)}…';
   }
 
   /// metrics 的 trend 只认 up / down / flat，其余按无趋势处理。

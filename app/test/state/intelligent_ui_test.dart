@@ -351,11 +351,11 @@ void main() {
         sessionId: 's',
       );
       expect(artifact, isNotNull);
-      expect(artifact!.definition['css'], contains('dsh-portable'));
+      expect(artifact!.title, 'Card title');
+      expect(artifact.definition['css'], contains('dsh-portable'));
       final html = artifact.definition['html'] as String;
-      // 各字段渲染成对应标签
-      expect(html, contains('<h2'));
-      expect(html, contains('Card title'));
+      // 各字段渲染成对应标签；标题只由卡头渲染，正文不再重复
+      expect(html, isNot(contains('<h2')));
       expect(html, contains('Region'));
       expect(html, contains('APAC'));
       expect(html, contains('dsh-portable-metrics'));
@@ -392,8 +392,8 @@ void main() {
         sessionId: 's',
       );
       expect(artifact, isNotNull);
-      expect(artifact!.definition['html'], contains('<h2'));
-      expect(artifact.definition['html'], contains('Top card'));
+      expect(artifact!.title, 'Top card');
+      expect(artifact.definition['html'], isNot(contains('<h2')));
       expect(artifact.definition['html'], contains('Count'));
       expect(artifact.definition['html'], contains('7'));
     });
@@ -792,6 +792,30 @@ void main() {
       final pieHtml = pie!.definition['html'] as String;
       expect(pieHtml, contains('<path d="M '));
       expect(pieHtml, contains('dsh-portable-legend'));
+    });
+
+    test('drops a pie chart whose values are all zero', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'markdown': '前',
+          'charts': [
+            {
+              'type': 'pie',
+              'labels': ['暂无', '无'],
+              'series': [
+                {'values': [0, 0]},
+              ],
+            },
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      final html = artifact!.definition['html'] as String;
+      // 全 0 饼图画不出扇形：整块不渲染，不能只剩一排图例。
+      expect(html, isNot(contains('dsh-portable-chart')));
+      expect(html, contains('前'));
     });
 
     test('keeps a valid accent and drops a blocked style hook', () {

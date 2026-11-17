@@ -43,7 +43,7 @@ dsh-go 不要求每个 UI 插件都适配自己的原生组件；聊天消息里
 ```
 
 - `kind` 取 `html` / `structured` / `media`；宿主按 kind 选择适配器。
-- HTML 必须自包含，不执行远程脚本。媒体分两条链路：聊天卡片里的 widget 内容运行在嵌套的 sandbox iframe 里（渲染器给 widget 文档套的 `sandbox="allow-scripts allow-forms"` iframe），该文档 CSP 现在恒含 `img-src data: blob: https:`、`font-src data: https:`、`media-src data: blob: https:`（并叠加 `policy.cdn` 里的源），所以 `html` / `widget` / `media` 卡在聊天里**能直接加载 `https` 图片、字体与音视频**，不再需要 `mediaOrigins`；`script-src` 仍受离线标志与 `policy.cdn` 门控，远程脚本一律不执行。分享快照是顶层文档、CSP 由 `policy` 生成（见下文分享快照一节），那里的联网与否仍由 `allowMedia` / `mediaOrigins` 决定。
+- HTML 必须自包含，不执行远程脚本。媒体分两条链路：聊天卡片里的 widget 内容运行在嵌套的 sandbox iframe 里（渲染器给 widget 文档套的 `sandbox="allow-scripts allow-forms"` iframe），该文档 CSP 现在恒含 `img-src data: blob: https:`、`font-src data: https:`、`media-src data: blob: https:`（`policy.cdn` 在渲染器里也会叠加，但 App 侧 `_postArtifact` 恒发空 `cdn`，实际只靠 `https:` 通配），所以 `html` / `widget` / `media` 卡在聊天里**能直接加载 `https` 图片、字体与音视频**，不再需要 `mediaOrigins`；`script-src` 仍受离线标志与 `policy.cdn` 门控，远程脚本一律不执行。分享快照是顶层文档、CSP 由 `policy` 生成（见下文分享快照一节），那里的联网与否仍由 `allowMedia` / `mediaOrigins` 决定。
 - 分享时宿主把可序列化的 envelope 转成离屏截图；只有 `policy` 放行媒体时截图 WebView 才联网，CSP 由同一 `policy` 生成；不依赖插件的 Web 前端状态。
 - 卡片高度由宿主测量决定：`policy.maxHeight` 目前**不参与裁切**（宿主硬上限 6000px），过高的卡由右上角全屏页承接，不要依赖该键控制高度。
 - 任意 React 组件、依赖宿主路由或前端全局状态的插件不应进入该协议，应改投 `dsh-go/view` 或使用 WebView 岛。
@@ -73,12 +73,12 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 
 | 键 | 输入 | 输出 |
 |---|---|---|
-| `title` | String | `<h2>` |
+| `title` | String | 只进卡片标题栏（卡头），正文不再重复渲染 `<h2>` |
 | `fields` | `[{label, value}]` | 一行一条 |
 | `metrics` | `[{label, value, delta?, trend?}]` | 卡片式指标块，`trend` 取 `up` / `down` / `flat`，用 class 标色 |
 | `tables` | `[{title?, columns: [String], rows: [[…]]}]` | `<table>`，最多 50 行 × 12 列，超出截断 |
 | `items` | 元素是 String 或 `{label, value}` 的列表 | `<ul><li>` |
-| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | 内联 SVG，`type` 取 `bar`（默认）/ `line` / `pie`；标签最多 24 个、序列最多 6 条，缺值补 0、超出截断 |
+| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | 内联 SVG，`type` 取 `bar`（默认）/ `line` / `pie`；标签最多 24 个、序列最多 6 条，缺值补 0、超出截断；`pie` 只画第一条序列 |
 | `accent` | `#rgb` / `#rrggbb` | 写成 CSS 变量 `--dsh-portable-accent` 与 `--dsh-portable-c1`；非法值静默丢弃 |
 | `style` | String | 作为 `<style>` 插在卡片外层；命中 `</style` / `@import` / `expression(` / `javascript:` 整段丢弃，否则截到 2000 字符并去掉 `<` |
 | `markdown` | String | 极简 Markdown：段落、`#` / `##` / `###` 标题、`**粗体**`、`*斜体*`、反引号行内代码、围栏代码块、`-` / `1.` 列表、`[文字](https://…)`；先转义再套标签，任何原始标签都不透传 |
@@ -89,7 +89,7 @@ SDK 侧另有一层更小的预算：`sdk/plugin-kit/lib/card.js` 的 `CARD_MAX_
 
 分享快照按卡片自己的 `policy` 决定是否联网（**已实现**）：
 
-- `app/lib/ui/share/intelligent_ui_snapshot.dart:107` 的 `snapshotAllowsRemoteMedia(policy)` 由 `allowMedia` / `mediaOrigins` 决定是否放行网络；同一 `policy` 生成的 CSP（同文件 `:129`）再决定能访问哪些源。
+- `app/lib/ui/share/intelligent_ui_snapshot.dart:107` 的 `snapshotAllowsRemoteMedia(policy)` 在 `allowMedia` 为真**或** `mediaOrigins` 覆盖该源时放行网络（OR 关系，不必同时满足）；同一 `policy` 生成的 CSP（同文件 `:129`）再决定能访问哪些源。
 - `app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/intelligentui/IntelligentUiSnapshotPlugin.kt:147` 的 `blockNetworkLoads = !remoteMedia`；联网时等图用同文件的 `MEDIA_SETTLE_MS = 5000L`（`:307`），不联网时用 `PAGE_SETTLE_MS`。
 - 历史提交：b30660bd（快照按 policy 联网）、3c92b37f（渲染器媒体改由 policy 放行，离线只作默认值）。
 

@@ -56,7 +56,16 @@ function clipTitle(value) {
   if (typeof value !== 'string') return undefined
   const title = value.trim()
   if (title === '') return undefined
-  return title.length <= PORTABLE_MAX_TITLE_CHARS ? title : title.slice(0, PORTABLE_MAX_TITLE_CHARS - 1) + '…'
+  return clipText(title, PORTABLE_MAX_TITLE_CHARS)
+}
+
+/** 截到 max - 1 个 code unit 再补省略号；末位是高代理时再退一位，避免把 emoji 切成半个。 */
+function clipText(text, max) {
+  if (text.length <= max) return text
+  let end = max - 1
+  const unit = text.charCodeAt(end - 1)
+  if (unit >= 0xd800 && unit <= 0xdbff) end -= 1
+  return text.slice(0, end) + '…'
 }
 
 /**
@@ -71,7 +80,7 @@ function cellText(value) {
   else if (typeof value === 'number') text = Number.isFinite(value) ? String(value) : ''
   else if (typeof value === 'boolean') text = String(value)
   else return undefined
-  return text.length <= PORTABLE_MAX_CELL_CHARS ? text : text.slice(0, PORTABLE_MAX_CELL_CHARS - 1) + '…'
+  return clipText(text, PORTABLE_MAX_CELL_CHARS)
 }
 
 /** `trend` 只认 up / down / flat，其余当没给（App `_trend`）。 */
@@ -170,8 +179,9 @@ export function portableCard(spec, options) {
 
   // 什么都画不出来时 App 会拿到空 buffer，等于不产卡。
   if (Object.keys(card).length === 1) return null
-  // App 把结构化数据渲染成 HTML 后 > 60000 就整卡丢弃。文本合计已经超了必然超；
-  // 没超也可能因为标记开销被 App 丢，那一步的精确长度只有 App 侧算得出来。
+  // App 把结构化数据渲染成 HTML 后 > 60000 就整卡丢弃。这里按 App 的转义口径算文本长度，
+  // 还留了标签开销的缺口（每段 <p>/<td> 等），精确长度只有 App 侧算得出来。
+  // 注意这里只做下界预检：超了直接不出卡，没超也可能被 App 判超。
   if (cardChars(card) > PORTABLE_MAX_HTML_CHARS) return null
   const policy = asPolicy(options?.policy)
   if (policy !== undefined) card.policy = policy
@@ -182,17 +192,29 @@ export function portableCard(spec, options) {
  * 卡片里所有文本的字符合计（UTF-16），用来做 60000 上限的保守预检。
  * @param {Record<string, any>} card
  */
-function cardChars(card) {
-  let total = card.title?.length ?? 0
-  for (const field of card.fields ?? []) total += field.label.length + field.value.length
-  for (const metric of card.metrics ?? []) total += metric.label.length + metric.value.length + (metric.delta?.length ?? 0)
-  for (const table of card.tables ?? []) {
-    total += table.title?.length ?? 0
-    for (const column of table.columns) total += column.length
-    for (const row of table.rows) for (const cell of row) total += cell.length
+/** App 先做 HTML 转义再拼标签：& 变 5 字符、< > 各变 4 字符，预检按转义后的长度算。 */
+function escapedLength(text) {
+  if (typeof text !== 'string' || text === '') return 0
+  let extra = 0
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i)
+    if (code === 38) extra += 4
+    else if (code === 60 || code === 62) extra += 3
   }
-  for (const item of card.items ?? []) total += typeof item === 'string' ? item.length : item.label.length + item.value.length
-  total += card.markdown?.length ?? 0
+  return text.length + extra
+}
+
+function cardChars(card) {
+  let total = escapedLength(card.title)
+  for (const field of card.fields ?? []) total += escapedLength(field.label) + escapedLength(field.value)
+  for (const metric of card.metrics ?? []) total += escapedLength(metric.label) + escapedLength(metric.value) + escapedLength(metric.delta)
+  for (const table of card.tables ?? []) {
+    total += escapedLength(table.title)
+    for (const column of table.columns) total += escapedLength(column)
+    for (const row of table.rows) for (const cell of row) total += escapedLength(cell)
+  }
+  for (const item of card.items ?? []) total += typeof item === 'string' ? escapedLength(item) : escapedLength(item.label) + escapedLength(item.value)
+  total += escapedLength(card.markdown)
   return total
 }
 
@@ -294,10 +316,9 @@ export function portableFragment(html, options) {
 /**
  * 第 4 层 `kind: 'media'`：只接受 https:// 的图片地址，App 会拼成 `<img>`（先做属性转义）。
  *
- * 聊天卡片 iframe 的 CSP 由 `policy` 决定（app/lib/ui/chat/intelligent_ui/intelligent_ui_card.dart:
- * `img-src data: blob:` 之外，只有 `policy.allowMedia === true` 才追加 `https:` 或
- * `policy.mediaOrigins` 的 https origin）。也就是说不传 policy 时 https 图片在聊天里加载不出来；
- * 要用就得自己给 `{ allowMedia: true }`（或 `mediaOrigins: ['https://cdn.example.com']`）。
+ * 聊天卡片 iframe 的 CSP 恒放行 https 图片、字体与音视频（渲染器 Xk 里 img/font/media 三条指令
+ * 都带 `https:`），所以 https 图片在聊天里直接加载，不需要 policy。`policy.allowMedia` /
+ * `mediaOrigins` 只影响分享快照那条链路（顶层文档 CSP 由 Dart 侧按 policy 生成）。
  * 这个 envelope 只能表达图片；视频要用第 2 层的 `dsh-go/media` 媒体卡。
  *
  * @param {unknown} url
