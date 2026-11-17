@@ -36,16 +36,16 @@ Layers 5 and 6 recognition (an item that does not qualify falls through to the n
     "css": "…",
     "policy": {
       "allowMedia": false,
-      "mediaOrigins": [],
-      "maxHeight": 4000
+      "mediaOrigins": []
     }
   }
 }
 ```
 
 - `kind` is `html` / `structured` / `media`; the host picks the adapter by kind.
-- HTML must be self-contained and must not execute remote scripts. The media story is narrower than `mediaOrigins` suggests: in the chat card the widget content runs inside a nested sandbox iframe (the renderer wraps the widget document in an iframe with `sandbox="allow-scripts allow-forms"`), and that document's CSP is fixed to `img-src data: blob:` / `media-src data: blob:` and **never reads `mediaOrigins`**, so an `html` / `media` card cannot load any `https` image or video in chat. Only the share snapshot is a top-level document whose CSP is built from `policy` (see the snapshot section below); that is the only place where remote resources listed in `mediaOrigins` can appear.
+- HTML must be self-contained and must not execute remote scripts. Media now has two paths: in the chat card the widget content runs inside a nested sandbox iframe (the renderer wraps the widget document in an iframe with `sandbox="allow-scripts allow-forms"`), and that document's CSP now always includes `img-src data: blob: https:`, `font-src data: https:` and `media-src data: blob: https:` (plus the origins in `policy.cdn`), so `html` / `widget` / `media` cards **load `https` images, fonts, audio and video directly in chat** and no longer need `mediaOrigins`; `script-src` stays gated by the offline flag and `policy.cdn`, so remote scripts never run. The share snapshot is a top-level document whose CSP is built from `policy` (see the snapshot section below); there, network access is still controlled by `allowMedia` / `mediaOrigins`.
 - For sharing, the host converts the serializable envelope into an off-screen snapshot; the capture WebView only opens the network when `policy` allows media, and the CSP comes from the same `policy`; it never depends on the plugin's web front-end state.
+- Card height is measured by the host: `policy.maxHeight` **does not clip anything** today (the host hard cap is 6000 px) and tall cards expand into the fullscreen view, so do not rely on that key for height control.
 - Arbitrary React components, host routing, or front-end global state do not belong in this protocol; use `dsh-go/view` or a WebView island instead.
 
 ## Current App implementation
@@ -65,7 +65,7 @@ A portable artifact does not only live on the chat row: `IntelligentUiProjection
 |---|---|---|
 | `html` | `html` (required, non-empty, must not match `<\s*/?\s*script`), optional `css`, optional `title` | emits `{html, css, initialHeight: 48}` |
 | `structured` | structured fields (table below) | emits structured HTML |
-| `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; whether the `<img>` really loads is decided by `policy` alone: the card needs both `allowMedia: true` and a `mediaOrigins` entry covering that origin, otherwise both the chat card (fixed iframe CSP) and the share snapshot (`snapshotAllowsRemoteMedia` false means `blockNetworkLoads`) show an empty image |
+| `media` | `url` (`https://` prefix only) | the URL is HTML-attribute-escaped before it goes into `src` (quotes become `&quot;`), so it cannot leave the attribute — never assume the raw URL's quotes cannot escape; the chat card then loads the image directly (the iframe CSP always allows `https:`), while the share snapshot needs `snapshotAllowsRemoteMedia` to be true (`allowMedia` plus a `mediaOrigins` entry covering that origin), otherwise `blockNetworkLoads` leaves an empty image |
 
 `policy` comes from the envelope for layer 4 and from the outer `presentationMeta['policy']` for layers 5 and 6; anything that is not a Map becomes an empty map. Every artifact is `IntelligentUiKind.widget`, `uiId` is the tool call's `callId`, `version` is 1, `seq` is the tool result's `seq`, `originSeq` is the `seq` where the tool call first appeared (equal to `seq` when the chat row calls the adapter directly), and `definition` must pass `IntelligentUiProjector._validWidget` (`app/lib/state/intelligent_ui.dart:920`); empty HTML or HTML matching `<\s*/?\s*script` produces no card. CSS has exactly two sources: layer 4 with `kind: html` takes the envelope's own `css`, and layer 5 `widget.html` takes `widget.css`; a bare `presentationMeta.html` or `presentationMeta.fragment` never reads an outer `presentationMeta.css`.
 
@@ -78,6 +78,9 @@ Structured rendering (`structured` and `card` share `_structuredHtml`); every te
 | `metrics` | `[{label, value, delta?, trend?}]` | metric tiles; `trend` is `up` / `down` / `flat`, colored by class |
 | `tables` | `[{title?, columns: [String], rows: [[…]]}]` | `<table>`, at most 50 rows × 12 columns, truncated beyond that |
 | `items` | list of String or `{label, value}` | `<ul><li>` |
+| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | inline SVG; `type` is `bar` (default) / `line` / `pie`; at most 24 labels and 6 series, missing values become 0, the rest is truncated |
+| `accent` | `#rgb` / `#rrggbb` | emitted as the `--dsh-portable-accent` and `--dsh-portable-c1` CSS variables; invalid values are dropped silently |
+| `style` | String | injected as a `<style>` block around the card; a value matching `</style` / `@import` / `expression(` / `javascript:` is dropped entirely, otherwise it is clipped to 2000 characters with `<` stripped |
 | `markdown` | String | minimal Markdown: paragraphs, `#` / `##` / `###` headings, `**bold**`, `*italic*`, backtick code spans, fenced code blocks, `-` / `1.` lists, `[text](https://…)`; escape first, then wrap, so no raw tag survives |
 
 The 60000-character HTML limit applies to **every** HTML source: the envelope's `html`, `presentationMeta.html`, `widget.html`, `fragment` and structured rendering alike produce no card past it (nothing is truncated, and there is no half card). The 480000-character gate in `_validWidget` is a separate limit. A card where no field rendered anything also produces no card. CSS is one shared block (`.dsh-portable`, `.dsh-portable-metrics`, `.dsh-portable-table`, …) and `initialHeight` stays 48.

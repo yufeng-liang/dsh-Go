@@ -720,6 +720,110 @@ void main() {
       expect(html, contains('dsh-portable-trend-flat'));
       expect(html, isNot(contains('dsh-portable-trend-up')));
     });
+    test('renders a bar chart as inline svg with a legend', () {
+      final artifact = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'charts': [
+            {
+              'type': 'bar',
+              'title': '每日请求',
+              'unit': 'k',
+              'labels': ['一', '二'],
+              'series': [
+                {'name': '成功', 'values': [3, 5]},
+                {'name': '失败', 'values': [1, 0]},
+              ],
+            },
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      expect(artifact, isNotNull);
+      final html = artifact!.definition['html'] as String;
+      expect(html, contains('<div class="dsh-portable-chart">'));
+      expect(html, contains('<svg viewBox="0 0 320 190"'));
+      expect(html, contains('<rect '));
+      expect(html, contains('var(--dsh-portable-c2)'));
+      expect(html, contains('每日请求 (k)'));
+      expect(html, contains('dsh-portable-legend'));
+      expect(html, isNot(contains('<script')));
+    });
+
+    test('renders line and pie charts as svg without external resources', () {
+      final line = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'charts': [
+            {
+              'type': 'line',
+              'labels': ['a', 'b', 'c'],
+              'series': [
+                {'values': [1, 4, 2]},
+              ],
+            },
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      final lineHtml = line!.definition['html'] as String;
+      expect(lineHtml, contains('<polyline '));
+      expect(lineHtml, contains('<circle cx='));
+      expect(lineHtml, isNot(contains('<img')));
+
+      final pie = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'charts': [
+            {
+              'type': 'pie',
+              'labels': ['读', '写'],
+              'series': [
+                {'values': [1, 3]},
+              ],
+            },
+          ],
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      final pieHtml = pie!.definition['html'] as String;
+      expect(pieHtml, contains('<path d="M '));
+      expect(pieHtml, contains('dsh-portable-legend'));
+    });
+
+    test('keeps a valid accent and drops a blocked style hook', () {
+      final ok = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'markdown': 'x',
+          'accent': '#12ab34',
+          'style': '.dsh-portable h2{color:#f00}',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      final okHtml = ok!.definition['html'] as String;
+      expect(okHtml, contains('--dsh-portable-accent:#12ab34'));
+      expect(okHtml, contains('<style>.dsh-portable h2{color:#f00}</style>'));
+
+      final blocked = PortableUiAdapter.fromTool(
+        item({
+          'kind': 'card',
+          'markdown': 'x',
+          'accent': 'red',
+          'style': '@import url(//evil.example/x.css)',
+        }),
+        hostId: 'h',
+        sessionId: 's',
+      );
+      final blockedHtml = blocked!.definition['html'] as String;
+      expect(blockedHtml, isNot(contains('--dsh-portable-accent')));
+      expect(blockedHtml, isNot(contains('@import')));
+      expect(blockedHtml, isNot(contains('<style>')));
+    });
   });
 
   group('IntelligentUiNativePreview', () {

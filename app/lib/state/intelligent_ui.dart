@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dsh_client/dsh_client.dart';
 
@@ -111,6 +112,13 @@ class PortableUiAdapter {
   /// 卡片初始高度：真正的排版交给 WebView，先给最小值再由渲染器量高。
   static const _initialHeight = 48;
 
+  /// 图表上限：标签 24 个、序列 6 条，防止超大 SVG 撑爆卡片。
+  static const _maxChartLabels = 24;
+  static const _maxChartSeries = 6;
+
+  /// 卡片自带 style 钩子的长度上限。
+  static const _maxStyleChars = 2000;
+
   /// 优先级 1–3 的 meta 键：任何一个非 null 都不该由 portable 出卡。
   static const _reservedKeys = ['dsh-go/view', 'dsh-go/media', 'ui'];
 
@@ -138,7 +146,14 @@ class PortableUiAdapter {
       '.dsh-portable-items li{margin:2px 0}'
       '.dsh-portable pre{background:rgba(127,127,127,.12);padding:8px;border-radius:6px;overflow:auto}'
       '.dsh-portable code{font-family:monospace}'
-      '.dsh-portable a{color:#1a73e8}';
+      '.dsh-portable a{color:#1a73e8}'
+      '.dsh-portable{--dsh-portable-c1:#1a73e8;--dsh-portable-c2:#e8710a;--dsh-portable-c3:#188038;--dsh-portable-c4:#d93025;--dsh-portable-c5:#9334e6;--dsh-portable-c6:#12b5cb}'
+      '.dsh-portable-chart{margin:10px 0}'
+      '.dsh-portable-chart svg{width:100%;height:auto;display:block}'
+      '.dsh-portable-chart-title{font-size:12px;opacity:.72;margin:0 0 4px}'
+      '.dsh-portable-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:11px;opacity:.85}'
+      '.dsh-portable-legend span{display:inline-flex;align-items:center;gap:4px}'
+      '.dsh-portable-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}';
 
   /// 正文转义只处理会破坏文本节点的字符，斜杠保持原样。
   static const _escape = HtmlEscape(HtmlEscapeMode.element);
@@ -392,6 +407,12 @@ class PortableUiAdapter {
     }
     if (metrics.isNotEmpty) buffer.write('<div class="dsh-portable-metrics">$metrics</div>');
 
+    for (final chart in IntelligentUiProjector._asList(data['charts'])) {
+      final map = IntelligentUiProjector._asMap(chart);
+      if (map == null) continue;
+      buffer.write(_chartHtml(map));
+    }
+
     for (final table in IntelligentUiProjector._asList(data['tables'])) {
       final map = IntelligentUiProjector._asMap(table);
       if (map == null) continue;
@@ -444,12 +465,188 @@ class PortableUiAdapter {
     if (markdown != null && markdown.trim().isNotEmpty) buffer.write(_markdownHtml(markdown));
 
     if (buffer.isEmpty) return null;
-    final html = '<div class="dsh-portable">$buffer</div>';
+    final accent = IntelligentUiProjector._asString(data['accent']);
+    final accentColor = accent != null && _accentPattern.hasMatch(accent.trim()) ? accent.trim() : '';
+    final styleAttribute =
+        accentColor.isEmpty ? '' : ' style="--dsh-portable-accent:$accentColor;--dsh-portable-c1:$accentColor"';
+    final styleHook = _styleHook(data['style']);
+    final prefix = styleHook.isEmpty ? '' : '<style>$styleHook</style>';
+    final html = '$prefix<div class="dsh-portable"$styleAttribute>$buffer</div>';
     return html.length > _maxHtmlChars ? null : html;
   }
 
   /// 极简 Markdown：段落、#/##/### 标题、粗体、斜体、行内代码、围栏代码块、
   /// 无序/有序列表和 https 链接。先转义再套标签，原始标签不会透传。
+
+
+  /// 坐标数值格式化：去掉多余的 .0，SVG 属性保持短小。
+  static String _chartNumber(double value) {
+    final text = value.toStringAsFixed(1);
+    return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
+  }
+
+  /// 序列配色：全部走 CSS 变量，跟随主题，插件可用 accent 覆盖第一条。
+  static String _chartColor(int index) => 'var(--dsh-portable-c${(index % 6) + 1})';
+
+  /// 结构化图表转内联 SVG：bar / line / pie，不加载任何外部资源。
+  static String _chartHtml(Map<String, Object?> data) {
+    final requested = IntelligentUiProjector._asString(data['type'])?.toLowerCase() ?? 'bar';
+    final type = const {'bar', 'line', 'pie'}.contains(requested) ? requested : 'bar';
+    final labels = <String>[];
+    for (final label in IntelligentUiProjector._asList(data['labels'])) {
+      if (labels.length >= _maxChartLabels) break;
+      labels.add(_cellText(label) ?? '');
+    }
+    if (labels.isEmpty) return '';
+    final series = <List<double>>[];
+    final names = <String>[];
+    for (final item in IntelligentUiProjector._asList(data['series'])) {
+      if (series.length >= _maxChartSeries) break;
+      final map = IntelligentUiProjector._asMap(item);
+      if (map == null) continue;
+      final values = <double>[];
+      for (final value in IntelligentUiProjector._asList(map['values'])) {
+        if (values.length >= labels.length) break;
+        final number = value is num ? value.toDouble() : double.tryParse('$value');
+        values.add(number != null && number.isFinite ? number : 0);
+      }
+      if (values.isEmpty) continue;
+      while (values.length < labels.length) {
+        values.add(0);
+      }
+      series.add(values);
+      names.add(_cellText(map['name']) ?? '');
+    }
+    if (series.isEmpty) return '';
+    final title = _cellText(data['title']) ?? '';
+    final unit = _cellText(data['unit']) ?? '';
+    final buffer = StringBuffer('<div class="dsh-portable-chart">');
+    if (title.isNotEmpty) {
+      final suffix = unit.isEmpty ? '' : ' (${_text(unit)})';
+      buffer.write('<p class="dsh-portable-chart-title">${_text(title)}$suffix</p>');
+    }
+    buffer.write(type == 'pie' ? _pieChart(series.first) : _xyChart(labels, series, type == 'line'));
+    buffer.write('<div class="dsh-portable-legend">');
+    if (type == 'pie') {
+      for (var i = 0; i < labels.length && i < series.first.length; i++) {
+        buffer.write('<span><i style="background:${_chartColor(i)}"></i>${_text(labels[i])}</span>');
+      }
+    } else {
+      for (var i = 0; i < series.length; i++) {
+        final name = names[i].isEmpty ? '序列 ${i + 1}' : names[i];
+        buffer.write('<span><i style="background:${_chartColor(i)}"></i>${_text(name)}</span>');
+      }
+    }
+    buffer.write('</div></div>');
+    return buffer.toString();
+  }
+
+  /// 直角坐标系图：柱状与折线共用同一套轴与留白。
+  static String _xyChart(List<String> labels, List<List<double>> series, bool line) {
+    const width = 320.0;
+    const height = 190.0;
+    const left = 34.0;
+    const right = 8.0;
+    const top = 10.0;
+    const bottom = 24.0;
+    final plotWidth = width - left - right;
+    final plotHeight = height - top - bottom;
+    var low = 0.0;
+    var high = 0.0;
+    for (final values in series) {
+      for (final value in values) {
+        if (value < low) low = value;
+        if (value > high) high = value;
+      }
+    }
+    if (high == low) high = low + 1;
+    double y(double value) => top + plotHeight * (1 - (value - low) / (high - low));
+    final buffer = StringBuffer('<svg viewBox="0 0 ${width.toInt()} ${height.toInt()}" role="img">');
+    final baseY = y(0);
+    buffer.write('<line x1="${_chartNumber(left)}" y1="${_chartNumber(baseY)}" x2="${_chartNumber(width - right)}" y2="${_chartNumber(baseY)}" stroke="rgba(127,127,127,.45)" stroke-width="1"/>');
+    buffer.write('<text x="${_chartNumber(left - 4)}" y="${_chartNumber(y(high) + 4)}" text-anchor="end" font-size="9" fill="currentColor" opacity=".6">${_chartNumber(high)}</text>');
+    final group = plotWidth / labels.length;
+    if (line) {
+      for (var s = 0; s < series.length; s++) {
+        final points = <String>[];
+        for (var i = 0; i < labels.length; i++) {
+          points.add('${_chartNumber(left + group * (i + 0.5))},${_chartNumber(y(series[s][i]))}');
+        }
+        buffer.write('<polyline fill="none" stroke="${_chartColor(s)}" stroke-width="2" stroke-linejoin="round" points="${points.join(' ')}"/>');
+        for (var i = 0; i < labels.length; i++) {
+          buffer.write('<circle cx="${_chartNumber(left + group * (i + 0.5))}" cy="${_chartNumber(y(series[s][i]))}" r="2" fill="${_chartColor(s)}"/>');
+        }
+      }
+    } else {
+      final barWidth = group * 0.8 / series.length;
+      for (var i = 0; i < labels.length; i++) {
+        for (var s = 0; s < series.length; s++) {
+          final valueY = y(series[s][i]);
+          final barTop = valueY < baseY ? valueY : baseY;
+          final barHeight = (valueY - baseY).abs();
+          final x = left + group * i + group * 0.1 + barWidth * s;
+          buffer.write('<rect x="${_chartNumber(x)}" y="${_chartNumber(barTop)}" width="${_chartNumber(barWidth)}" height="${_chartNumber(barHeight)}" rx="2" fill="${_chartColor(s)}"/>');
+        }
+      }
+    }
+    final step = labels.length <= 6 ? 1 : (labels.length / 6).ceil();
+    for (var i = 0; i < labels.length; i += step) {
+      buffer.write('<text x="${_chartNumber(left + group * (i + 0.5))}" y="${_chartNumber(height - 8)}" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">${_text(labels[i])}</text>');
+    }
+    buffer.write('</svg>');
+    return buffer.toString();
+  }
+
+  /// 饼图：只画第一组序列，扇形按绝对值占比。
+  static String _pieChart(List<double> values) {
+    const width = 320.0;
+    const height = 190.0;
+    const centerX = 90.0;
+    const centerY = 95.0;
+    const radius = 70.0;
+    var total = 0.0;
+    for (final value in values) {
+      total += value.abs();
+    }
+    if (total <= 0) return '';
+    final box = '<svg viewBox="0 0 ${width.toInt()} ${height.toInt()}" role="img">';
+    final buffer = StringBuffer(box);
+    var angle = -math.pi / 2;
+    for (var i = 0; i < values.length; i++) {
+      final value = values[i].abs();
+      if (value <= 0) continue;
+      final sweep = 2 * math.pi * value / total;
+      if (sweep >= 2 * math.pi - 0.001) {
+        buffer.write('<circle cx="${_chartNumber(centerX)}" cy="${_chartNumber(centerY)}" r="${_chartNumber(radius)}" fill="${_chartColor(i)}"/>');
+        angle = math.pi * 3 / 2;
+        continue;
+      }
+      final next = angle + sweep;
+      final x0 = centerX + radius * math.cos(angle);
+      final y0 = centerY + radius * math.sin(angle);
+      final x1 = centerX + radius * math.cos(next);
+      final y1 = centerY + radius * math.sin(next);
+      final large = sweep > math.pi ? 1 : 0;
+      buffer.write('<path d="M ${_chartNumber(centerX)} ${_chartNumber(centerY)} L ${_chartNumber(x0)} ${_chartNumber(y0)} A ${_chartNumber(radius)} ${_chartNumber(radius)} 0 $large 1 ${_chartNumber(x1)} ${_chartNumber(y1)} Z" fill="${_chartColor(i)}"/>');
+      angle = next;
+    }
+    buffer.write('</svg>');
+    return buffer.toString();
+  }
+
+  /// 卡片自带 style 钩子：只允许 CSS，限长并滤掉能跳出样式的构造。
+  static final _styleBlocked = RegExp(r'</\s*style|@import|expression\s*\(|javascript:', caseSensitive: false);
+
+  static String _styleHook(Object? value) {
+    if (value is! String) return '';
+    final css = value.trim();
+    if (css.isEmpty) return '';
+    final clipped = css.length > _maxStyleChars ? css.substring(0, _maxStyleChars) : css;
+    return _styleBlocked.hasMatch(clipped) ? '' : clipped.replaceAll('<', '');
+  }
+
+  static final _accentPattern = RegExp(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$');
+
   static String _markdownHtml(String markdown) {
     final lines = markdown.split('\n');
     final buffer = StringBuffer();

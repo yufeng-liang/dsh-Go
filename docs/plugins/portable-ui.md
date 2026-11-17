@@ -36,16 +36,16 @@ dsh-go 不要求每个 UI 插件都适配自己的原生组件；聊天消息里
     "css": "…",
     "policy": {
       "allowMedia": false,
-      "mediaOrigins": [],
-      "maxHeight": 4000
+      "mediaOrigins": []
     }
   }
 }
 ```
 
 - `kind` 取 `html` / `structured` / `media`；宿主按 kind 选择适配器。
-- HTML 必须自包含，不执行远程脚本。媒体口径要分清：聊天卡片里的 widget 内容运行在嵌套的 sandbox iframe 里（渲染器给 widget 文档套的 `sandbox="allow-scripts allow-forms"` iframe），该文档 CSP 固定为 `img-src data: blob:` / `media-src data: blob:`，**不读 `mediaOrigins`**，所以 `html` / `media` 卡在聊天里加载不了任何 `https` 图片或视频；只有分享快照是顶层文档、CSP 由 `policy` 生成（见下文分享快照一节），列入 `mediaOrigins` 的远程资源才会出现在分享图里。
+- HTML 必须自包含，不执行远程脚本。媒体分两条链路：聊天卡片里的 widget 内容运行在嵌套的 sandbox iframe 里（渲染器给 widget 文档套的 `sandbox="allow-scripts allow-forms"` iframe），该文档 CSP 现在恒含 `img-src data: blob: https:`、`font-src data: https:`、`media-src data: blob: https:`（并叠加 `policy.cdn` 里的源），所以 `html` / `widget` / `media` 卡在聊天里**能直接加载 `https` 图片、字体与音视频**，不再需要 `mediaOrigins`；`script-src` 仍受离线标志与 `policy.cdn` 门控，远程脚本一律不执行。分享快照是顶层文档、CSP 由 `policy` 生成（见下文分享快照一节），那里的联网与否仍由 `allowMedia` / `mediaOrigins` 决定。
 - 分享时宿主把可序列化的 envelope 转成离屏截图；只有 `policy` 放行媒体时截图 WebView 才联网，CSP 由同一 `policy` 生成；不依赖插件的 Web 前端状态。
+- 卡片高度由宿主测量决定：`policy.maxHeight` 目前**不参与裁切**（宿主硬上限 6000px），过高的卡由右上角全屏页承接，不要依赖该键控制高度。
 - 任意 React 组件、依赖宿主路由或前端全局状态的插件不应进入该协议，应改投 `dsh-go/view` 或使用 WebView 岛。
 
 ## 当前 App 实现状态
@@ -65,7 +65,7 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 |---|---|---|
 | `html` | `html`（必填，非空且不匹配 `<\s*/?\s*script`）、可选 `css`、可选 `title` | 生成 `{html, css, initialHeight: 48}` |
 | `structured` | 结构化字段（见下表） | 转成结构化 HTML |
-| `media` | `url`（只接受 `https://` 前缀） | 先按 HTML 属性转义再拼进 `src`（引号转成 `&quot;`），url 跳不出 `src` 属性——不要假设原始 url 的引号不会逃逸；生成 `<img>` 后是否真的加载只由 `policy` 决定：必须同时给 `allowMedia: true` 与覆盖该源的 `mediaOrigins`，否则聊天卡（iframe CSP 固定）和分享快照（`snapshotAllowsRemoteMedia` 为假即 `blockNetworkLoads`）都是空图 |
+| `media` | `url`（只接受 `https://` 前缀） | 先按 HTML 属性转义再拼进 `src`（引号转成 `&quot;`），url 跳不出 `src` 属性——不要假设原始 url 的引号不会逃逸；生成 `<img>` 后聊天卡直接加载（iframe CSP 恒放行 `https:`），分享快照则要 `snapshotAllowsRemoteMedia` 为真（`allowMedia` + 覆盖该源的 `mediaOrigins`），否则 `blockNetworkLoads` 关网变空图 |
 
 `policy` 的取法：第 4 层用 envelope 里的 `policy`，第 5、6 层用外层 `presentationMeta['policy']`；不是 Map 时按空 map 处理。产物统一是 `IntelligentUiKind.widget`、`uiId` 取工具调用的 `callId`、`version` 为 1、`seq` 取工具结果的 `seq`、`originSeq` 取这次工具调用第一次出现的 `seq`（聊天行直接走适配器时与 `seq` 相同）；`definition` 必须通过 `IntelligentUiProjector._validWidget`（`app/lib/state/intelligent_ui.dart:920`），`html` 为空或匹配 `<\s*/?\s*script` 直接不产卡。CSS 只有两个来源：第 4 层 `kind: html` 带 envelope 自己的 `css`，第 5 层 `widget.html` 带 `widget.css`；裸 `presentationMeta.html` 与 `fragment` 不读外层 `presentationMeta.css`。
 
@@ -78,6 +78,9 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 | `metrics` | `[{label, value, delta?, trend?}]` | 卡片式指标块，`trend` 取 `up` / `down` / `flat`，用 class 标色 |
 | `tables` | `[{title?, columns: [String], rows: [[…]]}]` | `<table>`，最多 50 行 × 12 列，超出截断 |
 | `items` | 元素是 String 或 `{label, value}` 的列表 | `<ul><li>` |
+| `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | 内联 SVG，`type` 取 `bar`（默认）/ `line` / `pie`；标签最多 24 个、序列最多 6 条，缺值补 0、超出截断 |
+| `accent` | `#rgb` / `#rrggbb` | 写成 CSS 变量 `--dsh-portable-accent` 与 `--dsh-portable-c1`；非法值静默丢弃 |
+| `style` | String | 作为 `<style>` 插在卡片外层；命中 `</style` / `@import` / `expression(` / `javascript:` 整段丢弃，否则截到 2000 字符并去掉 `<` |
 | `markdown` | String | 极简 Markdown：段落、`#` / `##` / `###` 标题、`**粗体**`、`*斜体*`、反引号行内代码、围栏代码块、`-` / `1.` 列表、`[文字](https://…)`；先转义再套标签，任何原始标签都不透传 |
 
 HTML 长度上限 60000 字符对**所有** html 来源生效：envelope 的 `html`、`presentationMeta.html`、`widget.html`、`fragment` 以及结构化渲染产物都一样，超限不出卡（不截断、不出半张卡）；`_validWidget` 的 480000 字符总闸另算。一个字段都没渲染出内容也不产卡。CSS 用一段共享样式（`.dsh-portable`、`.dsh-portable-metrics`、`.dsh-portable-table` 等），`initialHeight` 仍是 48。
