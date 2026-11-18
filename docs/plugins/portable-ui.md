@@ -80,7 +80,7 @@ portable 产物不只在聊天行上画一张卡：`IntelligentUiProjection`（`
 | `items` | 元素是 String 或 `{label, value}` 的列表 | `<ul><li>` |
 | `charts` | `[{type, title?, unit?, labels, series: [{name?, values}]}]` | 内联 SVG，`type` 取 `bar`（默认）/ `line` / `pie`；标签最多 24 个、序列最多 6 条，缺值补 0、超出截断；`pie` 只画第一条序列 |
 | `accent` | `#rgb` / `#rrggbb` | 写成 CSS 变量 `--dsh-portable-accent` 与 `--dsh-portable-c1`；非法值静默丢弃 |
-| `style` | String | 作为 `<style>` 插在卡片外层；命中 `</style` / `@import` / `expression(` / `javascript:` 整段丢弃，否则截到 2000 字符并去掉 `<` |
+| `style` | String | 作为 `<style>` 插在卡片外层；命中 `</style` / `@import` / `expression(` / `javascript:` 整段丢弃，否则截到 2000 字符并去掉 `<`。这是便捷钩子、**不是安全边界**——`html` 卡本身就能写 `<style>`，两者能力等价（都关在卡片 iframe 内，CSP `default-src 'none'` 挡掉外部资源） |
 | `markdown` | String | 极简 Markdown：段落、`#` / `##` / `###` 标题、`**粗体**`、`*斜体*`、反引号行内代码、围栏代码块、`-` / `1.` 列表、`[文字](https://…)`；先转义再套标签，任何原始标签都不透传 |
 
 HTML 长度上限 60000 字符对**所有** html 来源生效：envelope 的 `html`、`presentationMeta.html`、`widget.html`、`fragment` 以及结构化渲染产物都一样，超限不出卡（不截断、不出半张卡）；`_validWidget` 的 480000 字符总闸另算。一个字段都没渲染出内容也不产卡。CSS 用一段共享样式（`.dsh-portable`、`.dsh-portable-metrics`、`.dsh-portable-table` 等），`initialHeight` 仍是 48。
