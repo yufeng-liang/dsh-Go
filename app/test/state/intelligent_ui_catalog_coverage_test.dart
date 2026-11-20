@@ -36,6 +36,15 @@ const _catalogTypes = <String>[
   'Plot',
   'Math',
   'Mermaid',
+  'Accordion',
+  'Steps',
+  'KeyValue',
+  'EmptyState',
+  'FollowUp',
+  'Sources',
+  'Segmented',
+  'Calendar',
+  'Audio',
 ];
 
 String _json(Object? value) => const JsonEncoder().convert(value);

@@ -2,6 +2,18 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
+## 未发布 · Unreleased
+
+### 中文
+
+- **智能 UI 跟进上游 0.2.16。** 内置 renderer 升级到 deepseek-harness-intelligent-ui 0.2.16（commit bbd6f8c），新增 Accordion、Steps、KeyValue、EmptyState、FollowUp、Sources、Segmented、Calendar、Audio 共 9 个组件（组件总数 30 → 39）；Chart 增加水平条形/雷达图，Choice 支持多选，Form 增加开关/标签/日期区间等字段。保留 dsh-go 既有适配补丁（高度测量、CSP 媒体放行、B 站封面、政策 mapTiles/allowMedia 放宽）。
+- **修复。** 上游 0.2.16 起 `ui_render`/`ui_compose` 会在 `meta.normalized` 返回校验归一化后的组件树；dsh-go 现在优先采用合法的 normalized，避免宽松校验下的界面被静默丢弃。
+
+### English
+
+- **Intelligent UI follows upstream 0.2.16.** Bundled renderer upgraded to deepseek-harness-intelligent-ui 0.2.16 (commit bbd6f8c), adding 9 components (Accordion, Steps, KeyValue, EmptyState, FollowUp, Sources, Segmented, Calendar, Audio; 30 → 39 total); Chart gains horizontal-bar/radar, Choice multi-select, Form switch/tags/daterange fields. Existing dsh-go adaptation patches (height measurement, CSP media allowance, Bilibili cover, relaxed mapTiles/allowMedia policy) are retained.
+- **Fix.** Since 0.2.16 `ui_render`/`ui_compose` return a validated normalized tree in `meta.normalized`; dsh-go now prefers a valid normalized definition so lenient-validated UIs are not silently dropped.
+
 ## 1.2.0 · 2026-11-18
 
 ### 中文
