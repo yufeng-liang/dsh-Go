@@ -873,21 +873,24 @@ class IntelligentUiProjector {
     for (final item in settled) {
       final args = item.call.args;
       switch (item.call.kind) {
-        case 'ui_render':
-          if (latest.containsKey(item.id) || !_validTree(args)) break;
+        case 'ui_render': {
+          if (latest.containsKey(item.id)) break;
+          final def = _effectiveDefinition(item.meta, args, _validTree);
+          if (!_validTree(def)) break;
           latest[item.id] = IntelligentUiArtifact(
             kind: IntelligentUiKind.declarative,
             hostId: hostId,
             sessionId: sessionId,
             uiId: item.id,
             version: 1,
-            title: _asString(args['title']),
-            definition: args,
+            title: _asString(def['title']),
+            definition: def,
             policy: _policyOf(item.meta),
             turn: item.call.turn,
             seq: item.seq,
             originSeq: item.call.originSeq,
           );
+        }
         case 'ui_render_widget':
           if (latest.containsKey(item.id) || !_validWidget(args)) break;
           latest[item.id] = IntelligentUiArtifact(
@@ -903,17 +906,19 @@ class IntelligentUiProjector {
             seq: item.seq,
             originSeq: item.call.originSeq,
           );
-        case 'ui_compose':
-          if (latest.containsKey(item.id) || !_validComposition(args)) break;
-          final blocks = _asList(args['blocks']);
+        case 'ui_compose': {
+          if (latest.containsKey(item.id)) break;
+          final def = _effectiveDefinition(item.meta, args, _validComposition);
+          if (!_validComposition(def)) break;
+          final blocks = _asList(def['blocks']);
           latest[item.id] = IntelligentUiArtifact(
             kind: IntelligentUiKind.composition,
             hostId: hostId,
             sessionId: sessionId,
             uiId: item.id,
             version: 1,
-            title: _asString(args['title']),
-            definition: args,
+            title: _asString(def['title']),
+            definition: def,
             policy: _policyOf(item.meta),
             turn: item.call.turn,
             seq: item.seq,
@@ -926,6 +931,7 @@ class IntelligentUiProjector {
               if (blockId != null) blockVersions['${item.id}#$blockId'] = 1;
             }
           }
+        }
         case 'ui_patch':
           _applyPatch(
             latest: latest,
@@ -1026,6 +1032,18 @@ class IntelligentUiProjector {
       return null;
     }
     return map;
+  }
+
+  /// 0.2.16 起，工具结果 meta 可能携带服务端归一化后的定义（normalized）。
+  /// 其合法时优先使用，否则退回原始 args——没有 normalized 时行为与之前完全一致。
+  static Map<String, Object?> _effectiveDefinition(
+    Map<String, Object?> meta,
+    Map<String, Object?> args,
+    bool Function(Map<String, Object?>) valid,
+  ) {
+    final normalized = _asMap(meta['normalized']);
+    if (normalized != null && valid(normalized)) return normalized;
+    return args;
   }
 
   static bool _validTree(Map<String, Object?> tree) {
@@ -1448,22 +1466,26 @@ class IntelligentUiProjection {
   void _applySettled(_SettledCall item) {
     final args = item.call.args;
     switch (item.call.kind) {
-      case 'ui_render':
-        if (_latest.containsKey(item.id) || !IntelligentUiProjector._validTree(args)) return;
+      case 'ui_render': {
+        if (_latest.containsKey(item.id)) return;
+        final def = IntelligentUiProjector._effectiveDefinition(
+          item.meta, args, IntelligentUiProjector._validTree);
+        if (!IntelligentUiProjector._validTree(def)) return;
         _latest[item.id] = IntelligentUiArtifact(
           kind: IntelligentUiKind.declarative,
           hostId: hostId,
           sessionId: sessionId,
           uiId: item.id,
           version: 1,
-          title: IntelligentUiProjector._asString(args['title']),
-          definition: args,
+          title: IntelligentUiProjector._asString(def['title']),
+          definition: def,
           policy: IntelligentUiProjector._policyOf(item.meta),
           turn: item.call.turn,
           seq: item.seq,
           originSeq: item.call.originSeq,
         );
         _dirty = true;
+      }
       case 'ui_render_widget':
         if (_latest.containsKey(item.id) || !IntelligentUiProjector._validWidget(args)) return;
         _latest[item.id] = IntelligentUiArtifact(
@@ -1480,17 +1502,20 @@ class IntelligentUiProjection {
           originSeq: item.call.originSeq,
         );
         _dirty = true;
-      case 'ui_compose':
-        if (_latest.containsKey(item.id) || !IntelligentUiProjector._validComposition(args)) return;
-        final blocks = IntelligentUiProjector._asList(args['blocks']);
+      case 'ui_compose': {
+        if (_latest.containsKey(item.id)) return;
+        final def = IntelligentUiProjector._effectiveDefinition(
+          item.meta, args, IntelligentUiProjector._validComposition);
+        if (!IntelligentUiProjector._validComposition(def)) return;
+        final blocks = IntelligentUiProjector._asList(def['blocks']);
         _latest[item.id] = IntelligentUiArtifact(
           kind: IntelligentUiKind.composition,
           hostId: hostId,
           sessionId: sessionId,
           uiId: item.id,
           version: 1,
-          title: IntelligentUiProjector._asString(args['title']),
-          definition: args,
+          title: IntelligentUiProjector._asString(def['title']),
+          definition: def,
           policy: IntelligentUiProjector._policyOf(item.meta),
           turn: item.call.turn,
           seq: item.seq,
@@ -1504,6 +1529,7 @@ class IntelligentUiProjection {
           }
         }
         _dirty = true;
+      }
       case 'ui_patch':
         IntelligentUiProjector._applyPatch(
           latest: _latest,
