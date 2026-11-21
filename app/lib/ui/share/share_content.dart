@@ -1,8 +1,7 @@
 // What a share card shows (晒成果), built from the conversation, and the text work
 // done before it is drawn: the same redaction as a shared file or link
 // (credentials, home folders, app storage), visual replies summarised,
-// pictures gathered into galleries, long code lines folded and long answers cut
-// at a block boundary.
+// pictures gathered into galleries and long code lines folded.
 
 import 'dart:math' as math;
 
@@ -38,8 +37,9 @@ final class ShareQuestion extends ShareBlock {
 /// A reply: Markdown (code, maths, tables, pictures) drawn with the chat's
 /// renderer; its `![…](…)` pictures become galleries ([shareSegments]).
 final class ShareAnswer extends ShareBlock {
-  const ShareAnswer(this.markdown);
+  const ShareAnswer(this.markdown, {this.turn});
   final String markdown;
+  final int? turn;
 }
 
 /// An intelligent-ui card from the reply: drawn as a card, not as Markdown.
@@ -127,8 +127,9 @@ final class ShareAttachmentImage extends ShareImage {
 /// A picture a reply points at (`![…](chart.png)`): a workspace file, a web
 /// address or a `data:` URL.
 final class ShareUrlImage extends ShareImage {
-  const ShareUrlImage(this.url);
+  const ShareUrlImage(this.url, {this.turn});
   final String url;
+  final int? turn;
 }
 
 /// A picture already in hand (tests, a file's preview).
@@ -256,9 +257,6 @@ class ShareContent {
   bool get hasMeta => model != null || stats != null || process.isNotEmpty;
   bool get isConversation => blocks.any((b) => b is ShareAnswer || b is ShareQuestion || b is ShareIntelligentUi);
 
-  /// Several replies: drawn as a chat-style long image, with a taller budget.
-  bool get isLong => blocks.whereType<ShareAnswer>().length >= 2;
-
   /// The meta capsules: model, time, steps.
   List<String> get metaPills => [
     ?model,
@@ -289,10 +287,6 @@ String? shareTitleText(String? title) {
   if (t == null || t.isEmpty) return null;
   return redactText(t);
 }
-
-/// Columns a code line takes on the card before it wraps (JetBrains Mono at
-/// 13 on the card's content width less the well's padding).
-const shareCodeColumns = 38;
 
 /// `![alt](url)`, optionally wrapped in a link: `[![alt](url)](href)`. An
 /// address may hold one level of balanced parentheses.
@@ -730,6 +724,8 @@ class _Metrics {
   }
 }
 
+const shareCodeColumns = 38;
+
 /// Rows [lines] of code take once wrapped at [shareCodeColumns].
 int _codeRows(Iterable<String> lines) =>
     lines.fold(0, (sum, line) => sum + (_columns(line) / shareCodeColumns).ceil().clamp(1, 1 << 20));
@@ -849,6 +845,12 @@ ShareQuestion shareQuestionOf(UserChatItem item, {bool images = true}) => ShareQ
   ],
 );
 
+int? _imageTurn(ChatState state, AssistantChatItem reply) {
+  final key = reply.rowKey;
+  final match = key == null ? null : RegExp(r'^m([0-9]+)[.]').firstMatch(key);
+  return match == null ? turnOf(state.turns, reply.seq)?.turn : int.tryParse(match.group(1)!);
+}
+
 /// A reply's card: the conversation title, the question above it, the reply
 /// and its turn's model, time and work. [sessionId] is where its pictures
 /// are fetched from (null: the conversation open in the chat).
@@ -874,7 +876,7 @@ ShareContent shareContentForReply(
     title: shareTitleText(state.title),
     blocks: [
       if (question != null) shareQuestionOf(question, images: images),
-      if (answer.trim().isNotEmpty) ShareAnswer(answer),
+      if (answer.trim().isNotEmpty) ShareAnswer(answer, turn: _imageTurn(state, reply)),
       for (final card in cards) ShareIntelligentUi(card),
     ],
     model: reply.model ?? trace?.lastModel.model ?? state.model?.model,
@@ -920,7 +922,7 @@ ShareContent shareContentForItems(
         blocks.add(shareQuestionOf(prompt, images: images));
       case AssistantChatItem(:final text):
         final answer = shareMarkdown(text, images: images);
-        if (answer.trim().isNotEmpty) blocks.add(ShareAnswer(answer));
+        if (answer.trim().isNotEmpty) blocks.add(ShareAnswer(answer, turn: _imageTurn(state, item)));
         if (turnOf(state.turns, item.seq) case final trace?) {
           if (!seenUiTurns.add(trace.startSeq)) continue;
           for (final card in shareIntelligentUiCards(
