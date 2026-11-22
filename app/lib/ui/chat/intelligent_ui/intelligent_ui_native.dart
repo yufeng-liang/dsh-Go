@@ -256,10 +256,44 @@ class _NativeTableState extends State<_NativeTable> {
     if (widget.unbounded) return table;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 420),
-      child: Scrollbar(
-        controller: _controller,
-        thumbVisibility: true,
-        child: SingleChildScrollView(controller: _controller, child: table),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) {
+          if (mounted) setState(() {});
+          return false;
+        },
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final pos = _controller.hasClients ? _controller.position : null;
+            final max = pos?.maxScrollExtent ?? 0;
+            final vp = pos?.viewportDimension ?? 0;
+            final pixels = pos?.pixels ?? 0;
+            final show = max > 0 && vp > 0;
+            final content = vp + max;
+            final thumbH = show ? (vp * vp / content).clamp(36.0, vp) : 0.0;
+            final top = show ? (vp - thumbH) * (pixels / max).clamp(0.0, 1.0) : 0.0;
+            return Stack(
+              children: [
+                SingleChildScrollView(controller: _controller, child: table),
+                if (show)
+                  Positioned(
+                    right: 2,
+                    top: top,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 4,
+                        height: thumbH,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
