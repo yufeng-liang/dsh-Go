@@ -25,10 +25,12 @@ import io.github.ccch1mneyyy.dsh_app.launch.LaunchThemeSync
 import io.github.ccch1mneyyy.dsh_app.links.LinksPlugin
 import io.github.ccch1mneyyy.dsh_app.notify.NotifyPlugin
 import io.github.ccch1mneyyy.dsh_app.phone.PhonePlugin
+import io.github.ccch1mneyyy.dsh_app.runtime.AndroidBackgroundProtection
 import io.github.ccch1mneyyy.dsh_app.runtime.LaunchStart
 import io.github.ccch1mneyyy.dsh_app.runtime.RuntimePlugin
 import io.github.ccch1mneyyy.dsh_app.share.SharePlugin
 import io.github.ccch1mneyyy.dsh_app.shortcuts.ShortcutsPlugin
+import io.github.ccch1mneyyy.dsh_app.text.CachedTextActions
 import io.github.ccch1mneyyy.dsh_app.update.UpdatePlugin
 import io.github.ccch1mneyyy.dsh_app.voice.VoicePlugin
 import java.lang.ref.WeakReference
@@ -37,6 +39,9 @@ import java.util.TimeZone
 class MainActivity : FlutterActivity() {
     private var appChannel: MethodChannel? = null
     private var nativeAnimations: io.github.ccch1mneyyy.dsh_app.nativeanimation.NativeAnimationHost? = null
+
+    /** The selection toolbar's text actions, asked of the engine once (see [CachedTextActions]). */
+    private var textActions: CachedTextActions? = null
 
     /**
      * One engine per process, outliving this activity: swiping the app away from recents keeps
@@ -75,6 +80,9 @@ class MainActivity : FlutterActivity() {
             engine.plugins.add(io.github.ccch1mneyyy.dsh_app.companion.CompanionVoicePlugin())
             engine.plugins.add(io.github.ccch1mneyyy.dsh_app.speech.SpeechPlugin())
             engine.plugins.add(io.github.ccch1mneyyy.dsh_app.companion.CompanionWidgetPlugin())
+            engine.plugins.add(io.github.ccch1mneyyy.dsh_app.companion.CompanionReminderPlugin())
+            engine.plugins.add(io.github.ccch1mneyyy.dsh_app.companion.CompanionMapPlugin())
+            engine.plugins.add(io.github.ccch1mneyyy.dsh_app.companion.CompanionEmbeddingPlugin())
             engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
             cache.put(ENGINE_ID, engine)
         }
@@ -120,6 +128,18 @@ class MainActivity : FlutterActivity() {
         super.onConfigurationChanged(newConfig)
         // Light / dark: a custom launch screen's plain splash colour (the page's) may change with it.
         LaunchThemeSync.sync(this)
+        // The language: other apps' text actions are named in it.
+        textActions?.forget()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AndroidBackgroundProtection.get(this).setAppVisible(true)
+    }
+
+    override fun onStop() {
+        AndroidBackgroundProtection.get(this).setAppVisible(false)
+        super.onStop()
     }
 
     override fun onResume() {
@@ -127,6 +147,8 @@ class MainActivity : FlutterActivity() {
         nativeAnimations?.resume()
         io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundControl.get(applicationContext).restoreKeptChannel()
         inForeground = true
+        // Another app may have been changed meanwhile.
+        textActions?.forget()
         // Coming back counts as activity: the first frames may not be scheduled yet.
         framesActive = true
         applyRefreshRate()
@@ -199,6 +221,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         nativeAnimations = io.github.ccch1mneyyy.dsh_app.nativeanimation.NativeAnimationHost(this, flutterEngine.dartExecutor.binaryMessenger)
+        textActions = CachedTextActions.install(flutterEngine)
         appChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dsh/app")
         appChannel!!.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -243,6 +266,7 @@ class MainActivity : FlutterActivity() {
         nativeAnimations = null
         appChannel?.setMethodCallHandler(null)
         appChannel = null
+        textActions = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

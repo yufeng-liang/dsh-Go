@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import 'performance/refresh_rate.dart';
 import 'state/app_info.dart';
 import 'state/appearance_state.dart';
 import 'state/locale_state.dart';
+import 'state/notify_state.dart' show notifyChannelProvider;
 import 'state/star_prompt.dart' show starPromptGateProvider, starPromptProvider;
 import 'state/tile_style_state.dart';
 import 'ui/chat/dsh_ui/dsh_ui_model.dart' show DshUiAppAccent;
@@ -41,6 +43,8 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   bool? _glassBlur;
   bool? _instantPages;
   bool? _fluid;
+  ThemePack? _themePack;
+  Map<String, String> _loadedFonts = const {};
   late ThemeData _light;
   late ThemeData _dark;
 
@@ -92,7 +96,10 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   /// 跟随系统: the system language changed while the app was open.
   @override
   void didChangeLocales(List<Locale>? locales) {
-    if (ref.read(appLanguageProvider) == AppLanguage.system) setState(() {});
+    if (ref.read(appLanguageProvider) != AppLanguage.system) return;
+    setState(() {});
+    // Android re-registers the notification channels under the new language.
+    unawaited(ref.read(notifyChannelProvider).status());
   }
 
   /// The system's remove-animations setting changed while the app was open: page
@@ -100,12 +107,22 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   @override
   void didChangeAccessibilityFeatures() => setState(() {});
 
-  void _themesFor(AppAccent accent, bool english, bool glassBlur, bool instantPages, bool fluid) {
+  void _themesFor(
+    AppAccent accent,
+    bool english,
+    bool glassBlur,
+    bool instantPages,
+    bool fluid,
+    ThemePack? themePack,
+    Map<String, String> loadedFonts,
+  ) {
     if (accent == _accent &&
         english == _english &&
         glassBlur == _glassBlur &&
         instantPages == _instantPages &&
-        fluid == _fluid) {
+        fluid == _fluid &&
+        themePack == _themePack &&
+        mapEquals(loadedFonts, _loadedFonts)) {
       return;
     }
     _accent = accent;
@@ -113,6 +130,8 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
     _glassBlur = glassBlur;
     _instantPages = instantPages;
     _fluid = fluid;
+    _themePack = themePack;
+    _loadedFonts = loadedFonts;
     // Plugin views that ask for `accent: "app"` follow the palette.
     DshUiAppAccent.set(accent.seed.toARGB32());
     // English UI still shows Chinese content: keep its glyphs Chinese.
@@ -123,6 +142,8 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
       glassBlur: glassBlur,
       instantPages: instantPages,
       fluid: fluid,
+      themePack: themePack,
+      loadedFonts: loadedFonts,
     );
     _dark = buildDarkTheme(
       accent: accent,
@@ -130,6 +151,8 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
       glassBlur: glassBlur,
       instantPages: instantPages,
       fluid: fluid,
+      themePack: themePack,
+      loadedFonts: loadedFonts,
     );
   }
 
@@ -171,7 +194,15 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
         performance.reduceMotion || WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final fluid = performance.fluidMotion && !reduced;
     FrameClock.instance.enabled = fluid;
-    _themesFor(ref.watch(accentProvider), locale.languageCode == 'en', performance.blur, reduced, fluid);
+    _themesFor(
+      ref.watch(accentProvider),
+      locale.languageCode == 'en',
+      performance.blur,
+      reduced,
+      fluid,
+      ref.watch(activeThemePackProvider),
+      ref.watch(activeThemeFontsProvider),
+    );
     if (!waiting && !_settled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _settled = true);
     }

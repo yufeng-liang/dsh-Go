@@ -58,7 +58,6 @@ import io.github.ccch1mneyyy.dsh_app.voice.WavRecorder
 import java.util.Calendar
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
-import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -347,7 +346,10 @@ internal object PetOverlay {
         return mapOf(
             "enabled" to machine.enabled,
             "alwaysShow" to machine.alwaysShow,
-            "permission" to OverlayAccess.permission(a11y, canDraw, lastAdd).wire,
+            "permission" to OverlayAccess.permission(
+                a11y, canDraw, lastAdd,
+                a11yFailed = accessibilityRetry.remaining(PhoneA11yService.instance, now()) != null,
+            ).wire,
             "canDraw" to canDraw,
             "accessibility" to a11y,
             "snoozed" to machine.snoozed(now()),
@@ -798,7 +800,7 @@ internal object PetOverlay {
         val p = petParams ?: return
         val l = loaded ?: return
         if (!alive(petTicket)) return
-        val next = l.frames.frameFor(v.shown, dragging)
+        val next = l.frames.frameFor(v.shown, dragging, v.fadingFrom)
         if (next == v.frame) return
         val rest = restPos(v, p)
         v.setFrame(next)
@@ -1068,6 +1070,10 @@ internal object PetOverlay {
     // ---- touch ----------------------------------------------------------------------------------
 
     private fun petListener(ticket: OverlayWindowOwner.Ticket) = object : PetView.Listener {
+        override fun onBlendEnd() {
+            if (alive(ticket)) fitFrame()
+        }
+
         override fun onDragStart() {
             if (!alive(ticket)) return
             val v = petView ?: return

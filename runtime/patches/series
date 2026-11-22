@@ -5,6 +5,7 @@ fs-create-exclusive.diff
 install-log-redaction.diff
 piai-anthropic-opus55-thinking.diff
 piai-google-openai-store.diff
+piai-mistral-openai-store.diff
 plugin-manager-active-run-guard.diff
 plugin-manager-cancel-tree-confirmation.diff
 preset-legacy-delegation.diff
@@ -153,6 +154,28 @@ deepseek-refusal.diff
 deepseek-unnamed-stream-error.diff
 web-empty-reply-notice.diff
 profile-root-installation-precedence.diff
+messages-usage-evidence.diff
+piai-usage-evidence.diff
+piai-tool-call-id.diff
+piai-bedrock-usage-evidence.diff
+empty-tool-name-replay.diff
+piai-dashscope-system-role.diff
+companion-phone-memory-request.diff
+companion-auxiliary-single-request.diff
+companion-chat-usage-receipts.diff
+# Fixed Companion work belongs to the shared Android prefix.
+companion-task-approval-turn.diff
+companion-task-approval-cause.diff
+companion-notes-files.diff
+companion-task-storage.diff
+# Public lookup: direct observation and complete-input answer estimate.
+companion-public-lookup-observer.diff
+companion-lookup-answer-window.diff
+companion-find-drafts-files.diff
+companion-compare-output-window.diff
+companion-receipt-file-bytes.diff
+web-table-pipes.diff
+input-recovery.diff
 # HarmonyOS-only overlays (pins.json targetSets.ohos), after the whole common chain.
 ohos-attachment-publication.diff
 ohos-attachment-diagnostic.diff
