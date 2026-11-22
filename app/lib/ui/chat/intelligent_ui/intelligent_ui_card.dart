@@ -263,6 +263,7 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
     this.readOnly = false,
     this.immersive = false,
     this.allowFullscreen = false,
+    this.unboundedTables = false,
   });
 
   final IntelligentUiArtifact artifact;
@@ -279,6 +280,10 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
   /// Whether the card offers a full-screen view. Full-screen is useful for
   /// wide tables, charts and maps on a phone; share/replay cards leave it off.
   final bool allowFullscreen;
+
+  /// 全屏页里不再限制表格高度：让长表格自然展开，由整页滚动查看，
+  /// 而不是被卡片视图的 420px 限高截住。卡片流里保持 false。
+  final bool unboundedTables;
 
   @override
   ConsumerState<IntelligentUiCard> createState() => _IntelligentUiCardState();
@@ -320,7 +325,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   /// 再长的部分交给全屏页查看。
   static const int _hardMaxHeight = 6000;
 
-  int get _maxHeight => _hardMaxHeight;
+  int get _maxHeight => widget.unboundedTables ? 1000000 : _hardMaxHeight;
 
   @override
   void initState() {
@@ -538,6 +543,15 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
+    if (widget.unboundedTables) {
+      // 全屏页解除表格限高：表格完整展开，滚动交给外层页面。
+      unawaited(controller.runJavaScript(
+        "var s=document.getElementById('diui-unbounded');"
+        "if(!s){s=document.createElement('style');s.id='diui-unbounded';"
+        "s.textContent='.diui-table-wrap{max-height:none!important;overflow:visible!important}';"
+        "document.head.appendChild(s);} true;",
+      ));
+    }
   }
 
   Map<String, Object?> _renderArtifact(IntelligentUiArtifact card) {
@@ -928,7 +942,13 @@ class _IntelligentUiFullscreenPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(12),
           children: [
-            IntelligentUiCard(artifact: artifact, onSendPrompt: onSendPrompt, readOnly: readOnly, immersive: true),
+            IntelligentUiCard(
+              artifact: artifact,
+              onSendPrompt: onSendPrompt,
+              readOnly: readOnly,
+              immersive: true,
+              unboundedTables: true,
+            ),
           ],
         ),
       ),
