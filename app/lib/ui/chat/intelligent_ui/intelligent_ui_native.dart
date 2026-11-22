@@ -208,7 +208,16 @@ class _NativeTable extends StatefulWidget {
 }
 
 class _NativeTableState extends State<_NativeTable> {
-  final ScrollController _controller = ScrollController();
+  // 不记忆上次滚动位置：卡片重新出现时应从表格顶部开始，滚动条也在顶部。
+  final ScrollController _controller = ScrollController(keepScrollOffset: false);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_controller.hasClients && _controller.offset != 0) _controller.jumpTo(0);
+    });
+  }
 
   @override
   void dispose() {
