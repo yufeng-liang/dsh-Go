@@ -735,7 +735,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final l10n = context.l10n;
     final title = (widget.artifact.title ?? IntelligentUiNativePreview.titleOf(widget.artifact))?.trim();
     final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
-    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
+    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact, unboundedTables: widget.unboundedTables);
     if (nativePreview != null) {
       if (widget.immersive) {
         final displayTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;

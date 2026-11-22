@@ -9,9 +9,7 @@ import '../render/markdown_body.dart';
 class IntelligentUiNativePreview {
   const IntelligentUiNativePreview._();
 
-  // 表格不在此快速路径：原生 Table 无法限高滚动，会按列宽换行把卡片撑得很长。
-  // 交给 WebView 渲染，复用 shell.html 的限高纵向滚动与全屏解除限高。
-  static const _supported = {'Text', 'Stat', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
+  static const _supported = {'Text', 'Stat', 'Table', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
 
   /// A catalog Card may carry its heading in `props.title`, while the tool
   /// call itself has no title. Use it as the card heading so native cards
@@ -70,11 +68,11 @@ class IntelligentUiNativePreview {
     return visit(root, 0);
   }
 
-  static Widget? tryBuild(BuildContext context, IntelligentUiArtifact artifact) {
+  static Widget? tryBuild(BuildContext context, IntelligentUiArtifact artifact, {bool unboundedTables = false}) {
     if (!supports(artifact)) return null;
     final nodes = _nodes(artifact.definition)!;
     final root = artifact.definition['root'] as String;
-    final content = _buildNode(context, root, nodes, 0);
+    final content = _buildNode(context, root, nodes, 0, unboundedTables: unboundedTables);
     if (content == null) return null;
     return Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 12), child: content);
   }
@@ -93,7 +91,7 @@ class IntelligentUiNativePreview {
     return nodes;
   }
 
-  static Widget? _buildNode(BuildContext context, String id, Map<String, Map<String, Object?>> nodes, int depth) {
+  static Widget? _buildNode(BuildContext context, String id, Map<String, Map<String, Object?>> nodes, int depth, {bool unboundedTables = false}) {
     if (depth > 8) return null;
     final node = nodes[id];
     if (node == null) return null;
@@ -130,31 +128,7 @@ class IntelligentUiNativePreview {
         final columns = props['columns'];
         final rows = props['rows'];
         if (columns is! List || rows is! List || columns.isEmpty) return null;
-        return Table(
-          border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
-          children: [
-            TableRow(
-              children: [
-                for (final column in columns)
-                  Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Text('$column', style: Theme.of(context).textTheme.labelMedium),
-                  ),
-              ],
-            ),
-            for (final row in rows)
-              if (row is List)
-                TableRow(
-                  children: [
-                    for (var i = 0; i < columns.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Text(i < row.length ? '${row[i]}' : '', style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                  ],
-                ),
-          ],
-        );
+        return _NativeTable(columns: columns, rows: rows, unbounded: unboundedTables);
       case 'Badge':
         final text = _string(props['text']);
         if (text == null) return null;
@@ -201,7 +175,7 @@ class IntelligentUiNativePreview {
         final built = <Widget>[];
         for (final child in children) {
           if (child is! String) return null;
-          final widget = _buildNode(context, child, nodes, depth + 1);
+          final widget = _buildNode(context, child, nodes, depth + 1, unboundedTables: unboundedTables);
           if (widget == null) return null;
           built.add(widget);
         }
@@ -219,3 +193,66 @@ class IntelligentUiNativePreview {
   static String? _string(Object? value) => value is String && value.isNotEmpty ? value : null;
   static double? _number(Object? value) => value is num ? value.toDouble() : null;
 }
+
+/// 原生表格卡片：卡片内限高 420 并显示纵向滚动条，全屏时不限高自然展开。
+/// 列宽等分、单元格自动换行，不产生横向溢出。
+class _NativeTable extends StatefulWidget {
+  const _NativeTable({required this.columns, required this.rows, required this.unbounded});
+
+  final List<Object?> columns;
+  final List<Object?> rows;
+  final bool unbounded;
+
+  @override
+  State<_NativeTable> createState() => _NativeTableState();
+}
+
+class _NativeTableState extends State<_NativeTable> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final table = Table(
+      border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
+      defaultColumnWidth: const FlexColumnWidth(),
+      children: [
+        TableRow(
+          children: [
+            for (final column in widget.columns)
+              Padding(
+                padding: const EdgeInsets.all(6),
+                child: Text('$column', style: Theme.of(context).textTheme.labelMedium),
+              ),
+          ],
+        ),
+        for (final row in widget.rows)
+          if (row is List)
+            TableRow(
+              children: [
+                for (var i = 0; i < widget.columns.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text(i < row.length ? '${row[i]}' : '', style: Theme.of(context).textTheme.bodySmall),
+                  ),
+              ],
+            ),
+      ],
+    );
+    if (widget.unbounded) return table;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 420),
+      child: Scrollbar(
+        controller: _controller,
+        thumbVisibility: true,
+        child: SingleChildScrollView(controller: _controller, child: table),
+      ),
+    );
+  }
+}
+
