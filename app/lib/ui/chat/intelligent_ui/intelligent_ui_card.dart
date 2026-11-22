@@ -36,11 +36,11 @@ html,body{padding:0!important;margin:0!important;height:auto!important;min-heigh
 #ui .diui-remote{padding:0!important;font-size:13px}
 .diui-compose{display:flex;flex-direction:column;gap:10px;padding:2px 0 8px}
 .diui-compose .diui-md{font-size:13px;line-height:1.5}
-.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;border-radius:8px;max-height:none!important;overflow:visible!important}
+.diui-table-wrap{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior:contain;border-radius:8px;max-height:420px!important;overflow:auto!important}
 .diui-md table,.diui-md pre,.diui-code,.diui-problem-detail,.diui-diff-body,.diui-map-list,.diui-tablist{max-height:none!important;overflow-y:visible!important;overflow-x:hidden!important}
 .diui-md table,.diui-md pre,.diui-code,.diui-diff-body,.diui-tablist{width:100%!important;max-width:100%!important}
-.diui-md table,.diui-table{table-layout:fixed!important}
-.diui-table th,.diui-table td{padding:8px 12px;font-size:13px;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word}
+.diui-md table{table-layout:fixed!important}#ui .diui-table{table-layout:auto!important;max-width:none!important}
+.diui-table th{padding:8px 12px;font-size:13px;white-space:nowrap!important;overflow-wrap:normal!important;word-break:normal!important}.diui-table td{padding:8px 12px;font-size:13px;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word}
 .diui-table th{font-weight:600}
 .diui-md pre,.diui-code{white-space:pre-wrap!important;word-break:break-word!important}
 .diui-tablist{flex-wrap:wrap!important;white-space:normal!important}
@@ -263,6 +263,7 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
     this.readOnly = false,
     this.immersive = false,
     this.allowFullscreen = false,
+    this.unboundedTables = false,
   });
 
   final IntelligentUiArtifact artifact;
@@ -279,6 +280,10 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
   /// Whether the card offers a full-screen view. Full-screen is useful for
   /// wide tables, charts and maps on a phone; share/replay cards leave it off.
   final bool allowFullscreen;
+
+  /// 全屏页里不再限制表格高度：让长表格自然展开，由整页滚动查看，
+  /// 而不是被卡片视图的 420px 限高截住。卡片流里保持 false。
+  final bool unboundedTables;
 
   @override
   ConsumerState<IntelligentUiCard> createState() => _IntelligentUiCardState();
@@ -320,7 +325,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   /// 再长的部分交给全屏页查看。
   static const int _hardMaxHeight = 6000;
 
-  int get _maxHeight => _hardMaxHeight;
+  int get _maxHeight => widget.unboundedTables ? 1000000 : _hardMaxHeight;
 
   @override
   void initState() {
@@ -538,6 +543,15 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
+    if (widget.unboundedTables) {
+      // 全屏页解除表格限高：表格完整展开，滚动交给外层页面。
+      unawaited(controller.runJavaScript(
+        "var s=document.getElementById('diui-unbounded');"
+        "if(!s){s=document.createElement('style');s.id='diui-unbounded';"
+        "s.textContent='.diui-table-wrap{max-height:none!important;overflow:visible!important}';"
+        "document.head.appendChild(s);} true;",
+      ));
+    }
   }
 
   Map<String, Object?> _renderArtifact(IntelligentUiArtifact card) {
@@ -721,7 +735,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final l10n = context.l10n;
     final title = (widget.artifact.title ?? IntelligentUiNativePreview.titleOf(widget.artifact))?.trim();
     final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
-    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact);
+    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact, unboundedTables: widget.unboundedTables);
     if (nativePreview != null) {
       if (widget.immersive) {
         final displayTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
@@ -928,7 +942,13 @@ class _IntelligentUiFullscreenPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(12),
           children: [
-            IntelligentUiCard(artifact: artifact, onSendPrompt: onSendPrompt, readOnly: readOnly, immersive: true),
+            IntelligentUiCard(
+              artifact: artifact,
+              onSendPrompt: onSendPrompt,
+              readOnly: readOnly,
+              immersive: true,
+              unboundedTables: true,
+            ),
           ],
         ),
       ),

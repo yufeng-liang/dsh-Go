@@ -68,11 +68,11 @@ class IntelligentUiNativePreview {
     return visit(root, 0);
   }
 
-  static Widget? tryBuild(BuildContext context, IntelligentUiArtifact artifact) {
+  static Widget? tryBuild(BuildContext context, IntelligentUiArtifact artifact, {bool unboundedTables = false}) {
     if (!supports(artifact)) return null;
     final nodes = _nodes(artifact.definition)!;
     final root = artifact.definition['root'] as String;
-    final content = _buildNode(context, root, nodes, 0);
+    final content = _buildNode(context, root, nodes, 0, unboundedTables: unboundedTables);
     if (content == null) return null;
     return Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 12), child: content);
   }
@@ -91,7 +91,7 @@ class IntelligentUiNativePreview {
     return nodes;
   }
 
-  static Widget? _buildNode(BuildContext context, String id, Map<String, Map<String, Object?>> nodes, int depth) {
+  static Widget? _buildNode(BuildContext context, String id, Map<String, Map<String, Object?>> nodes, int depth, {bool unboundedTables = false}) {
     if (depth > 8) return null;
     final node = nodes[id];
     if (node == null) return null;
@@ -128,31 +128,7 @@ class IntelligentUiNativePreview {
         final columns = props['columns'];
         final rows = props['rows'];
         if (columns is! List || rows is! List || columns.isEmpty) return null;
-        return Table(
-          border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
-          children: [
-            TableRow(
-              children: [
-                for (final column in columns)
-                  Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Text('$column', style: Theme.of(context).textTheme.labelMedium),
-                  ),
-              ],
-            ),
-            for (final row in rows)
-              if (row is List)
-                TableRow(
-                  children: [
-                    for (var i = 0; i < columns.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Text(i < row.length ? '${row[i]}' : '', style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                  ],
-                ),
-          ],
-        );
+        return _NativeTable(columns: columns, rows: rows, unbounded: unboundedTables);
       case 'Badge':
         final text = _string(props['text']);
         if (text == null) return null;
@@ -199,7 +175,7 @@ class IntelligentUiNativePreview {
         final built = <Widget>[];
         for (final child in children) {
           if (child is! String) return null;
-          final widget = _buildNode(context, child, nodes, depth + 1);
+          final widget = _buildNode(context, child, nodes, depth + 1, unboundedTables: unboundedTables);
           if (widget == null) return null;
           built.add(widget);
         }
@@ -217,3 +193,109 @@ class IntelligentUiNativePreview {
   static String? _string(Object? value) => value is String && value.isNotEmpty ? value : null;
   static double? _number(Object? value) => value is num ? value.toDouble() : null;
 }
+
+/// 原生表格卡片：卡片内限高 420 并显示纵向滚动条，全屏时不限高自然展开。
+/// 列宽等分、单元格自动换行，不产生横向溢出。
+class _NativeTable extends StatefulWidget {
+  const _NativeTable({required this.columns, required this.rows, required this.unbounded});
+
+  final List<Object?> columns;
+  final List<Object?> rows;
+  final bool unbounded;
+
+  @override
+  State<_NativeTable> createState() => _NativeTableState();
+}
+
+class _NativeTableState extends State<_NativeTable> {
+  // 不记忆上次滚动位置：卡片重新出现时应从表格顶部开始，滚动条也在顶部。
+  final ScrollController _controller = ScrollController(keepScrollOffset: false);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_controller.hasClients && _controller.offset != 0) _controller.jumpTo(0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final table = Table(
+      border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
+      defaultColumnWidth: const FlexColumnWidth(),
+      children: [
+        TableRow(
+          children: [
+            for (final column in widget.columns)
+              Padding(
+                padding: const EdgeInsets.all(6),
+                child: Text('$column', style: Theme.of(context).textTheme.labelMedium),
+              ),
+          ],
+        ),
+        for (final row in widget.rows)
+          if (row is List)
+            TableRow(
+              children: [
+                for (var i = 0; i < widget.columns.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text(i < row.length ? '${row[i]}' : '', style: Theme.of(context).textTheme.bodySmall),
+                  ),
+              ],
+            ),
+      ],
+    );
+    if (widget.unbounded) return table;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 420),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) {
+          if (mounted) setState(() {});
+          return false;
+        },
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final pos = _controller.hasClients ? _controller.position : null;
+            final max = pos?.maxScrollExtent ?? 0;
+            final vp = pos?.viewportDimension ?? 0;
+            final pixels = pos?.pixels ?? 0;
+            final show = max > 0 && vp > 0;
+            final content = vp + max;
+            final thumbH = show ? (vp * vp / content).clamp(36.0, vp) : 0.0;
+            final top = show ? (vp - thumbH) * (pixels / max).clamp(0.0, 1.0) : 0.0;
+            return Stack(
+              children: [
+                SingleChildScrollView(controller: _controller, child: table),
+                if (show)
+                  Positioned(
+                    right: 2,
+                    top: top,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 4,
+                        height: thumbH,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+

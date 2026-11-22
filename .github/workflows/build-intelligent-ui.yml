@@ -71,7 +71,7 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
           ls "$ANDROID_NDK_HOME" | head
           # 版本号跟随 app/pubspec.yaml（此前硬编码 1.0.15 会与仓库版本脱节）。
-          tooling/build-apk.sh --release -f arm64
+          tooling/build-apk.sh --release -f arm64 --no-companion
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-go-intelligent-ui-arm64
