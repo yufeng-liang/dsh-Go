@@ -9,7 +9,9 @@ import '../render/markdown_body.dart';
 class IntelligentUiNativePreview {
   const IntelligentUiNativePreview._();
 
-  static const _supported = {'Text', 'Stat', 'Table', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
+  // 表格不在此快速路径：原生 Table 无法限高滚动，会按列宽换行把卡片撑得很长。
+  // 交给 WebView 渲染，复用 shell.html 的限高纵向滚动与全屏解除限高。
+  static const _supported = {'Text', 'Stat', 'Badge', 'Divider', 'List', 'Progress', 'Stack', 'Grid', 'Card'};
 
   /// A catalog Card may carry its heading in `props.title`, while the tool
   /// call itself has no title. Use it as the card heading so native cards
