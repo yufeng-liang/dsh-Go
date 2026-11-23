@@ -75,6 +75,8 @@ class ToolRow extends StatefulWidget {
     this.card = ToolCardPlacement.inline,
     this.uiArtifact,
     this.onSendPrompt,
+    this.onSendNewSession,
+    this.readOnly = false,
   });
 
   final ToolChatItem item;
@@ -86,6 +88,12 @@ class ToolRow extends StatefulWidget {
 
   /// 智能 UI 卡里的 `sendPrompt` 动作，交给当前会话发送。
   final Future<bool> Function(String text)? onSendPrompt;
+
+  /// 智能 UI 卡里的 `sendNewSession` 动作，交给页面新开会话发送。
+  final IntelligentUiNewSessionHandler? onSendNewSession;
+
+  /// 只读会话：卡片动作不显示。
+  final bool readOnly;
 
   /// 带原生卡片(`meta["dsh-go/view"]`)时卡片画在哪,见 [ToolCardPlacement]。
   /// 不带卡片的调用不受影响。
@@ -177,6 +185,8 @@ class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
           child: IntelligentUiCard(
             artifact: artifact,
             onSendPrompt: widget.onSendPrompt,
+            onSendNewSession: widget.onSendNewSession,
+            readOnly: widget.readOnly,
             immersive: true,
             allowFullscreen: true,
           ),
@@ -237,6 +247,8 @@ class _ToolRowState extends State<ToolRow> with AutomaticKeepAliveClientMixin {
                 ? IntelligentUiCard(
                     artifact: widget.uiArtifact!,
                     onSendPrompt: widget.onSendPrompt,
+                    onSendNewSession: widget.onSendNewSession,
+                    readOnly: widget.readOnly,
                     immersive: true,
                     allowFullscreen: true,
                   )

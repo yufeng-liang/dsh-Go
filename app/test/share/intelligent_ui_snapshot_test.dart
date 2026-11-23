@@ -18,6 +18,7 @@ void main() {
     expect(html, contains('A & B'));
     expect(html, isNot(contains('window.renderer = true;')));
     expect(html, contains("type:'captureReady'"));
+    expect(html, isNot(contains('sendNewSession')));
   });
 
   test('snapshot policy controls remote media origins', () {
@@ -102,6 +103,34 @@ void main() {
     );
     expect(html, contains('img-src data: blob: https://ok.example'));
     expect(html, isNot(contains('img.example')));
+  });
+
+  test('snapshots never expose the new session bridge', () {
+    final declarative = buildIntelligentUiSnapshotHtml(
+      rendererCode: 'window.renderer = true;',
+      artifact: const {
+        'kind': 'declarative',
+        'uiId': 'share-no-new-session',
+        'version': 1,
+        'definition': {'root': 'root', 'components': []},
+      },
+      dark: false,
+      locale: 'zh-CN',
+    );
+    final widget = buildIntelligentUiSnapshotHtml(
+      rendererCode: '',
+      artifact: const {
+        'kind': 'widget',
+        'uiId': 'share-no-new-session',
+        'version': 1,
+        'definition': {'html': '<p>hello</p>'},
+      },
+      dark: false,
+      locale: 'zh-CN',
+    );
+
+    expect(declarative, isNot(contains('sendNewSession')));
+    expect(widget, isNot(contains('sendNewSession')));
   });
 
   test('snapshot waits for images before captureReady', () {

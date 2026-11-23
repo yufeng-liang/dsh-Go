@@ -15,6 +15,10 @@ class IntelligentUiBridgeMessage {
   };
 
   String? get text => data['text'] is String ? data['text'] as String : null;
+  String? get nodeId => switch (data['nodeId']) {
+    final String value when value.isNotEmpty => value,
+    _ => null,
+  };
   String? get name => data['name'] is String ? data['name'] as String : null;
   String? get url => data['url'] is String ? data['url'] as String : null;
   double? get height => switch (data['height']) {

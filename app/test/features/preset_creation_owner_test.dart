@@ -36,6 +36,8 @@ class _Sessions extends SessionsController {
     HostConnection conn, {
     required bool Function() isCurrent,
     bool autoApprove = true,
+    void Function(String)? onCreated,
+    String? workspaceId,
   }) async {
     // Isolate creation exactly as the old fixture did. Do not enforce owner
     // after the gate: that would hide a missing outer startCreator check.

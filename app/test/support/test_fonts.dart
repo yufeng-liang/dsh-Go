@@ -48,11 +48,31 @@ Future<void> loadTestFonts() async {
     'assets/fonts/JetBrainsMono-Bold.ttf',
     'assets/fonts/JetBrainsMono-Italic.ttf',
   ]);
-  final fontDir = Platform.environment['DSH_TEST_FONT_DIR'] ?? '/usr/share/fonts/noto-cjk';
-  final cjk = ['$fontDir/NotoSansCJK-Regular.ttc', '$fontDir/NotoSansCJK-Bold.ttc'];
+  final configuredFontDir = Platform.environment['DSH_TEST_FONT_DIR'];
+  final fontDir = configuredFontDir ?? (Platform.isWindows ? 'C:/Windows/Fonts' : '/usr/share/fonts/noto-cjk');
+  String pick(String preferred, List<String> fallbacks) {
+    for (final path in [preferred, ...fallbacks]) {
+      if (File(path).existsSync()) return path;
+    }
+    return preferred;
+  }
+
+  final regular = pick('$fontDir/NotoSansCJK-Regular.ttc', [
+    if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
+  ]);
+  final bold = pick('$fontDir/NotoSansCJK-Bold.ttc', [
+    if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyhbd.ttc',
+    if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
+  ]);
   // The display sizes are w300: the light face, as on ROMs whose system sans
   // has one.
-  final sans = ['$fontDir/NotoSansCJK-Light.ttc', ...cjk];
+  final light = pick('$fontDir/NotoSansCJK-Light.ttc', [
+    if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyhl.ttc',
+    if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
+    regular,
+  ]);
+  final cjk = <String>{regular, bold}.toList();
+  final sans = <String>{light, ...cjk}.toList();
   await family(sansFamily, sans);
   await family(cjkFamily, sans);
   // `AppType.mono` falls back through `monospace` and `Noto Sans Mono CJK SC`

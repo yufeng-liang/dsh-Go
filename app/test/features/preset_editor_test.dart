@@ -35,6 +35,8 @@ class _Sessions extends SessionsController {
     HostConnection conn, {
     required bool Function() isCurrent,
     bool autoApprove = true,
+    void Function(String)? onCreated,
+    String? workspaceId,
   }) async {
     creates++;
     return 'new-1';

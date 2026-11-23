@@ -58,7 +58,7 @@ import '../../state/usage_state.dart';
 import '../../state/voice_state.dart';
 import '../../state/voice_model_state.dart';
 import '../../state/voice_settings.dart';
-import '../../state/workspaces_state.dart' show selectedWorkspaceProvider, workspaceTitle;
+import '../../state/workspaces_state.dart' show selectedWorkspaceProvider, workspaceTitle, workspacesProvider;
 import '../../usage/usage_stats.dart';
 import '../common/app_sheet.dart';
 import '../common/brief_notice.dart';
@@ -91,6 +91,7 @@ import '../workspace/workspaces_page.dart';
 import 'balance_widgets.dart';
 import 'chat_header.dart';
 import 'chat_list.dart';
+import 'intelligent_ui/intelligent_ui_card.dart' show IntelligentUiNewSessionResult;
 import 'composer.dart';
 import 'composer_toast.dart';
 import 'dock/chat_dock.dart';
@@ -262,6 +263,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   /// Only this creation may own the composer's busy state.
   Object? _creating;
 
+  /// 智能 UI 的“新会话”动作进行中：同一时间只允许一个。
+  Object? _uiNewSession;
+
+  /// 按“源会话 + 卡片 + 按钮”记住已建好的新会话，重试时复用。
+  final Map<String, String> _uiNewSessionIds = {};
+
   /// Only one apply of a session's owed new-chat setup at a time.
   Object? _applyingSetup;
 
@@ -426,9 +433,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     ref.listenManual(activeConnectionProvider.select((c) => c.value?.client), (_, _) {
       _dropPreparedPhoneSkill();
       _draftScope = Object();
-      if (_creating != null || _syncWait != null) {
+      if (_creating != null || _syncWait != null || _uiNewSession != null) {
         setState(() {
           _creating = null;
+          _uiNewSession = null;
           _syncWait = null;
         });
       }
@@ -539,6 +547,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     _endInteraction = null;
     _draftScope = Object();
     _creating = null;
+    _uiNewSession = null;
     _syncWait = null;
     _composerToastWait?.cancel();
     _input.removeListener(_resetSlashDismissal);
@@ -572,7 +581,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
       if (owed != null && !await _applyOwedSetup(host, current, owed, isCurrent)) return null;
       return current;
     }
-    if (_creating != null) return null;
+    if (_creating != null || _uiNewSession != null) return null;
     final host = ref.read(activeHostProvider);
     final pendingFolder = ref.read(pendingSessionFolderProvider);
     final attempt = Object();
@@ -695,7 +704,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     if (_mentions.pickHighlighted()) return;
     final typed = _input.text.trim();
     final drafts = _drafts;
-    if ((typed.isEmpty && drafts.isEmpty) || _creating != null || _syncWait != null) return;
+    if ((typed.isEmpty && drafts.isEmpty) || _creating != null || _syncWait != null || _uiNewSession != null) return;
     // Generation mode: an ordinary message whose first line is the
     // parameter header (media-generation §8, revision of 2026-10-28).
     final generate = ref.read(generateModeProvider).byKey[_draftKey];
@@ -795,6 +804,128 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     if (!ok && _sameHost(client)) _giveBack(sessionId, typed, drafts, quote: quote);
   }
 
+  /// 智能 UI 的“新会话”：在源会话所在工作区新建会话、切过去，再把选择发过去。
+  /// 失败时把文字留在新会话的输入框；创建失败只提示，不改当前会话。
+  /// 同一个卡片按钮（源会话 + uiId + nodeId）的重试复用第一次建好的会话。
+  Future<IntelligentUiNewSessionResult> _sendUiNewSession(String text, {required String uiId, String? nodeId}) async {
+    final conn = ref.read(activeConnectionProvider).value;
+    if (conn == null || _uiNewSession != null || _creating != null || _syncWait != null) {
+      return const IntelligentUiNewSessionResult(sent: false);
+    }
+    final client = conn.client;
+    final generation = client.mux.generation;
+    final sourceSession = ref.read(currentSessionProvider);
+    if (sourceSession == null) return const IntelligentUiNewSessionResult(sent: false);
+    final key = _uiNewSessionKey(sourceSession, uiId, nodeId);
+    final attempt = Object();
+    bool owns() =>
+        mounted &&
+        identical(_uiNewSession, attempt) &&
+        _sameConnection(client, generation) &&
+        ref.read(currentSessionProvider) == sourceSession;
+    setState(() => _uiNewSession = attempt);
+    String? createdId;
+    var newId = _uiNewSessionIds[key];
+    try {
+      if (newId != null && !_sessionExists(newId)) {
+        _uiNewSessionIds.remove(key);
+        newId = null;
+      }
+      if (newId == null) {
+        try {
+          newId = await ref
+              .read(sessionsProvider.notifier)
+              .createForConnection(
+                conn,
+                isCurrent: owns,
+                workspaceId: _workspaceForSession(sourceSession),
+                onCreated: (id) => createdId = id,
+              );
+          _uiNewSessionIds[key] = newId;
+        } catch (e) {
+          if (createdId != null) await _discardOrphanSession(client, createdId!);
+          if (owns()) _toast(chatErrorText(e, action: appL10n.chatCreateFailed));
+          return const IntelligentUiNewSessionResult(sent: false);
+        }
+      }
+      final newSessionId = newId;
+      if (!owns()) {
+        _uiNewSessionIds.remove(key);
+        if (createdId != null) await _discardOrphanSession(client, createdId!);
+        return const IntelligentUiNewSessionResult(sent: false);
+      }
+      ref.read(currentSessionProvider.notifier).select(newSessionId);
+      if (!mounted ||
+          !identical(_uiNewSession, attempt) ||
+          !_sameConnection(client, generation) ||
+          ref.read(currentSessionProvider) != newSessionId) {
+        _uiNewSessionIds.remove(key);
+        if (createdId != null) await _discardOrphanSession(client, createdId!);
+        return IntelligentUiNewSessionResult(sessionId: newSessionId, sent: false);
+      }
+      final chat = ref.read(chatProvider(newSessionId).notifier);
+      try {
+        final ready = await chat.waitForSync(
+          isCurrent: () =>
+              mounted &&
+              identical(_uiNewSession, attempt) &&
+              _sameConnection(client, generation) &&
+              ref.read(currentSessionProvider) == newSessionId,
+        );
+        if (!ready ||
+            !mounted ||
+            !identical(_uiNewSession, attempt) ||
+            !_sameConnection(client, generation) ||
+            ref.read(currentSessionProvider) != newSessionId) {
+          if (_sameHost(client)) _giveBack(newSessionId, text, const []);
+          return IntelligentUiNewSessionResult(sessionId: newSessionId, sent: false);
+        }
+        final ok = await chat.send(
+          text,
+          mode: SendMode.now,
+          deliveryAllowed: () =>
+              mounted &&
+              identical(_uiNewSession, attempt) &&
+              _sameConnection(client, generation) &&
+              ref.read(currentSessionProvider) == newSessionId,
+        );
+        if (!ok && _sameHost(client)) _giveBack(newSessionId, text, const []);
+        return IntelligentUiNewSessionResult(sessionId: newSessionId, sent: ok);
+      } catch (_) {
+        if (_sameHost(client)) _giveBack(newSessionId, text, const []);
+        return IntelligentUiNewSessionResult(sessionId: newSessionId, sent: false);
+      }
+    } finally {
+      if (identical(_uiNewSession, attempt) && mounted) {
+        setState(() => _uiNewSession = null);
+      }
+    }
+  }
+
+  String _uiNewSessionKey(String sourceSession, String uiId, String? nodeId) =>
+      '$sourceSession\u0000$uiId\u0000${nodeId ?? ''}';
+
+  String? _workspaceForSession(String sessionId) {
+    for (final workspace in ref.read(workspacesProvider).workspaces) {
+      if (workspace.sessionIds.contains(sessionId)) return workspace.workspaceId;
+    }
+    return null;
+  }
+
+  bool _sessionExists(String sessionId) {
+    final sessions = ref.read(sessionsProvider).value;
+    if (sessions == null) return true;
+    return sessions.any((session) => session.sessionId == sessionId);
+  }
+
+  Future<void> _discardOrphanSession(DshClient client, String sessionId) async {
+    try {
+      await client.archiveSession(sessionId, stopActivity: true);
+    } catch (_) {
+      // The new blank session is only best-effort cleanup when creation lost its owner.
+    }
+  }
+
   // A failed send belongs to the Host that accepted it. The controller may
   // retire its continuation after reconnect; do not restore its draft into a
   // replacement Host merely because it uses the same session id.
@@ -809,6 +940,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
 
   /// 没发出去:把字、附件和引用还给那个对话(用户还没开始打新的才还)。
   void _giveBack(String sessionId, String text, List<DraftAttachment> attachments, {String? quote}) {
+    if (!mounted) return;
     final quotes = ref.read(composerQuoteProvider.notifier);
     if (quote != null && ref.read(composerQuoteProvider)[sessionId] == null) {
       quotes.set(sessionId, quote);
@@ -1920,6 +2052,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                   onQuote: readOnly ? null : (passage) => _quote(sessionId, passage),
                                   onToast: _composerToast,
                                   onSwitchModel: readOnly ? null : _switchModel,
+                                  onSendNewSession: readOnly ? null : _sendUiNewSession,
+                                  readOnly: readOnly,
                                 ),
                               ),
                             ),
@@ -2239,7 +2373,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                     running: chat?.running ?? false,
                                     stopping: chat?.stopping ?? false,
                                     sessionReady: chat?.controlReady ?? true,
-                                    busy: _creating != null || _syncWait != null,
+                                    busy: _creating != null || _syncWait != null || _uiNewSession != null,
                                     // The header, the tool row and the strip
                                     // already say an approval waits: the hint
                                     // stays the plain one.

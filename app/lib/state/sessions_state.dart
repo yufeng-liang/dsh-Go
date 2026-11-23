@@ -605,6 +605,8 @@ class SessionsController extends AsyncNotifier<List<SessionSummary>> {
     HostConnection conn, {
     required bool Function() isCurrent,
     bool autoApprove = true,
+    String? workspaceId,
+    void Function(String sessionId)? onCreated,
   }) async {
     final owner = ref;
     void checkCurrent() {
@@ -615,20 +617,21 @@ class SessionsController extends AsyncNotifier<List<SessionSummary>> {
     // Remote hosts: the working directory configured for that host, else the
     // workspace used last (as the official client does), else the remote DSH's
     // own default.
-    var workspaceId = await workspaceForNewSession(ref);
+    var targetWorkspaceId = workspaceId ?? await workspaceForNewSession(ref);
     checkCurrent();
-    if (workspaceId == null && _hostPicksNewChatDirectory(conn)) {
+    if (targetWorkspaceId == null && _hostPicksNewChatDirectory(conn)) {
       await _listsForNewChat();
       checkCurrent();
       final sameHost = identical(ref.read(activeConnectionProvider).value?.client, conn.client);
-      if (sameHost) workspaceId = _recentForNewChat(conn, ref.read(workspacesProvider), state.value)?.workspaceId;
+      if (sameHost) targetWorkspaceId = _recentForNewChat(conn, ref.read(workspacesProvider), state.value)?.workspaceId;
     }
     final created = await createSessionInWorkspace(
       conn.client,
-      workspaceId,
+      targetWorkspaceId,
       cwd: conn.isLocal ? localWorkspaceDir : conn.workingDirectory,
       checkCurrent: checkCurrent,
     );
+    onCreated?.call(created.sessionId);
     checkCurrent();
     // Safe mode keeps the default preset: the agent there repairs the engine
     // with a full shell already, and every command should still be asked.

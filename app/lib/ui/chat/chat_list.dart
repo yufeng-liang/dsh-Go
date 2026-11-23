@@ -41,6 +41,7 @@ import 'chat_rows_cache.dart';
 import 'media/media_paths.dart';
 import 'composer_toast.dart';
 import 'dsh_ui/dsh_ui.dart';
+import 'intelligent_ui/intelligent_ui_card.dart';
 import 'render/markdown_image.dart';
 import 'trajectory_sheet.dart';
 import 'turn_summary.dart' show forgetToolSummaries;
@@ -101,6 +102,8 @@ class ChatList extends ConsumerStatefulWidget {
     this.onQuote,
     this.onToast,
     this.onSwitchModel,
+    this.onSendNewSession,
+    this.readOnly = false,
     this.toTop,
   });
 
@@ -150,6 +153,12 @@ class ChatList extends ConsumerStatefulWidget {
   /// 「换模型」 on a turn the engine refused for its model; the screen opens
   /// the model sheet for this conversation. Null leaves the action out.
   final VoidCallback? onSwitchModel;
+
+  /// 智能 UI 的“新会话”动作；null 时卡片不显示该入口。
+  final IntelligentUiNewSessionHandler? onSendNewSession;
+
+  /// 只读子代理会话：卡片动作一律不显示、不执行。
+  final bool readOnly;
 
   @override
   ConsumerState<ChatList> createState() => _ChatListState();
@@ -1523,7 +1532,9 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
         item: item,
         card: card,
         uiArtifact: uiArtifact,
-        onSendPrompt: _sendUiPrompt,
+        onSendPrompt: widget.readOnly ? null : _sendUiPrompt,
+        onSendNewSession: widget.onSendNewSession,
+        readOnly: widget.readOnly,
         onRespond: _respond,
         onAllowAll: _allowAll,
         autoAnswered: _autoAnswered,

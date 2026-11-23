@@ -121,9 +121,21 @@ String buildIntelligentUiHtml({
   required String rendererCode,
   required String token,
   Map<String, Object?> policy = const {},
+  bool allowNewSession = false,
 }) {
   final code = _escapedRendererCode(rendererCode);
   final tokenJson = jsonEncode(token);
+  final newSessionHost = allowNewSession
+      ? '''
+    sendNewSession:function(text,nodeId){
+      return new Promise(function(resolve,reject){
+        var id=++seq;
+        pending.set(id,{resolve:resolve,reject:reject});
+        send('newSession',{id:id,text:String(text),nodeId:String(nodeId||'')});
+      });
+    },
+'''
+      : '';
   final csp = _contentSecurityPolicy(policy);
   return '''
 <!doctype html>
@@ -160,7 +172,7 @@ String buildIntelligentUiHtml({
         send('prompt',{id:id,text:String(text)});
       });
     },
-    onHeight:function(height){ send('resize',{height:height}); }
+$newSessionHost    onHeight:function(height){ send('resize',{height:height}); }
   };
   window.open=function(url){ if(url) send('openLink',{url:String(url)}); return null; };
   var renderer=DshIntelligentUiRenderer.mount(document.getElementById('ui'),host);
@@ -255,11 +267,30 @@ class IntelligentUiCardPlaceholder extends StatelessWidget {
 /// 智能 UI 卡的标题行留白:比普通卡紧凑(默认上 16 / 下 8 → 上 8 / 下 0)。
 const EdgeInsets _compactHeaderPadding = EdgeInsets.fromLTRB(ChatCard.inset, 8, ChatCard.inset, 0);
 
+/// 智能 UI 的“新会话”动作返回值。
+///
+/// [sessionId] 在会话创建成功后立即返回，即使随后的发送失败；调用方可用它
+/// 在重试时复用同一个新会话。[sent] 表示消息是否真的发出。
+class IntelligentUiNewSessionResult {
+  const IntelligentUiNewSessionResult({this.sessionId, required this.sent});
+
+  final String? sessionId;
+  final bool sent;
+}
+
+/// 新会话动作的处理函数。`nodeId` 来自客户端按钮冻结状态，用于重试去重。
+typedef IntelligentUiNewSessionHandler = Future<IntelligentUiNewSessionResult> Function(
+  String text, {
+  required String uiId,
+  String? nodeId,
+});
+
 class IntelligentUiCard extends ConsumerStatefulWidget {
   const IntelligentUiCard({
     super.key,
     required this.artifact,
     this.onSendPrompt,
+    this.onSendNewSession,
     this.readOnly = false,
     this.immersive = false,
     this.allowFullscreen = false,
@@ -268,6 +299,9 @@ class IntelligentUiCard extends ConsumerStatefulWidget {
 
   final IntelligentUiArtifact artifact;
   final Future<bool> Function(String text)? onSendPrompt;
+
+  /// 智能 UI 卡里的 `sendNewSession` 动作，交给页面新开会话发送。
+  final IntelligentUiNewSessionHandler? onSendNewSession;
 
   /// Replay/share cards are read-only: action buttons may render, but any
   /// prompt is rejected instead of reaching a host.
@@ -308,8 +342,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
   // 离线构建的插件 policy 恒无 mapTiles；应用侧给默认瓦片源（OSM 在国内被
   // 重置连不上，高德栅格瓦片直连可达且无需 key），Map 卡才有真瓦片。
   static const Map<String, Object?> _defaultMapTiles = <String, Object?>{
-    'url':
-        'https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    'url': 'https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     'attribution': '© 高德地图',
     'maxZoom': 18,
   };
@@ -332,7 +365,6 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     super.initState();
     _token = '';
     _dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
-    _locale = _localeOf(context);
     _ensureBiliCovers();
     _load();
   }
@@ -367,6 +399,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     super.didUpdateWidget(oldWidget);
     final changed =
         oldWidget.artifact.uiId != widget.artifact.uiId || oldWidget.artifact.version != widget.artifact.version;
+    final accessChanged =
+        oldWidget.readOnly != widget.readOnly ||
+        (oldWidget.onSendNewSession != null) != (widget.onSendNewSession != null);
     if (changed) {
       // A reused row must not inherit the previous card's WebView height.
       _height = 96;
@@ -375,6 +410,8 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     if (changed) {
       _ensureBiliCovers();
       _postArtifact();
+    } else if (accessChanged) {
+      _postNewSession();
     }
   }
 
@@ -510,8 +547,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         final data = body is Map ? body['data'] : null;
         final pic = data is Map ? data['pic'] : null;
         if (pic is String && pic.isNotEmpty) {
-          _biliCovers[bvid] =
-              pic.startsWith('http://') ? 'https://${pic.substring(7)}' : pic;
+          _biliCovers[bvid] = pic.startsWith('http://') ? 'https://${pic.substring(7)}' : pic;
           if (mounted && _ready) _postArtifact();
         }
       }
@@ -529,8 +565,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     // 与 remote 一致：不给 CDN 外链权限；媒体与打开链接按插件 policy 放行。
     final artifact = _renderArtifact(widget.artifact);
     final rawPolicy = artifact['policy'];
-    final covers =
-        _biliCovers.isEmpty ? null : Map<String, String>.of(_biliCovers);
+    final covers = _biliCovers.isEmpty ? null : Map<String, String>.of(_biliCovers);
     if (covers != null) {
       if (kDebugMode) debugPrint('diui covers injected: ${covers.length}');
     }
@@ -542,16 +577,31 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       if (rawPolicy is! Map || rawPolicy['mapTiles'] == null) 'mapTiles': _defaultMapTiles,
     };
     final data = jsonEncode({...artifact, 'policy': policy}).replaceAll('<', r'\u003c');
+    // 静态 shell 先挂 host；每张卡按自身权限决定是否暴露“新会话”。
+    _postNewSession();
     unawaited(controller.runJavaScript('window.__diuiSetArtifact && window.__diuiSetArtifact($data); true;'));
     if (widget.unboundedTables) {
       // 全屏页解除表格限高：表格完整展开，滚动交给外层页面。
-      unawaited(controller.runJavaScript(
-        "var s=document.getElementById('diui-unbounded');"
-        "if(!s){s=document.createElement('style');s.id='diui-unbounded';"
-        "s.textContent='.diui-table-wrap{max-height:none!important;overflow:visible!important}';"
-        "document.head.appendChild(s);} true;",
-      ));
+      unawaited(
+        controller.runJavaScript(
+          "var s=document.getElementById('diui-unbounded');"
+          "if(!s){s=document.createElement('style');s.id='diui-unbounded';"
+          "s.textContent='.diui-table-wrap{max-height:none!important;overflow:visible!important}';"
+          "document.head.appendChild(s);} true;",
+        ),
+      );
     }
+  }
+
+  void _postNewSession() {
+    final controller = _controller;
+    if (controller == null) return;
+    final allowNewSession = !widget.readOnly && widget.onSendNewSession != null;
+    unawaited(
+      controller.runJavaScript(
+        'window.__diuiSetNewSession && window.__diuiSetNewSession(${jsonEncode(allowNewSession)}); true;',
+      ),
+    );
   }
 
   Map<String, Object?> _renderArtifact(IntelligentUiArtifact card) {
@@ -629,6 +679,9 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       case 'prompt':
         await _handlePrompt(parsed);
         break;
+      case 'newSession':
+        await _handleNewSession(parsed);
+        break;
     }
   }
 
@@ -650,12 +703,30 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     }
   }
 
-  Future<void> _handlePrompt(IntelligentUiBridgeMessage message) async {
+  Future<void> _handlePrompt(IntelligentUiBridgeMessage message) => _handleSendAction(message, widget.onSendPrompt);
+
+  Future<void> _handleNewSession(IntelligentUiBridgeMessage message) => _handleSendAction(message, (text) async {
+    final handler = widget.onSendNewSession;
+    if (handler == null) return false;
+    final result = await handler(text, uiId: widget.artifact.uiId, nodeId: message.nodeId);
+    return result.sent;
+  });
+
+  /// `prompt` 与 `newSession` 共用同一套动作闸门与确认 UI，只有最终落点不同。
+  Future<void> _handleSendAction(IntelligentUiBridgeMessage message, Future<bool> Function(String text)? action) async {
     final id = message.id;
+    if (id == null) return;
     final text = message.text?.trim();
-    if (id == null || text == null || text.isEmpty || text.length > 4000 || !_ready) return;
+    if (text == null || text.isEmpty || text.length > 4000 || !_ready) {
+      _reply(id, false, 'invalid');
+      return;
+    }
     if (widget.readOnly) {
       _reply(id, false, 'read-only');
+      return;
+    }
+    if (action == null) {
+      _reply(id, false, 'unavailable');
       return;
     }
     if (!_scopeActive() || _actions.admit(id, DateTime.now()) == null) {
@@ -670,7 +741,10 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
       _reply(id, false, 'cancelled');
       return;
     }
-    if (!mounted) return;
+    if (!mounted) {
+      _reply(id, false, 'unmounted');
+      return;
+    }
     if (!_actions.isCurrent(id) || !_scopeActive()) {
       _actions.invalidate();
       _reply(id, false, 'cancelled');
@@ -687,8 +761,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     }
     var ok = false;
     try {
-      final sendPrompt = widget.onSendPrompt;
-      ok = sendPrompt == null ? false : await sendPrompt(text);
+      ok = await action(text);
     } catch (_) {
       ok = false;
     } finally {
@@ -735,7 +808,11 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
     final l10n = context.l10n;
     final title = (widget.artifact.title ?? IntelligentUiNativePreview.titleOf(widget.artifact))?.trim();
     final semanticTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
-    final nativePreview = IntelligentUiNativePreview.tryBuild(context, widget.artifact, unboundedTables: widget.unboundedTables);
+    final nativePreview = IntelligentUiNativePreview.tryBuild(
+      context,
+      widget.artifact,
+      unboundedTables: widget.unboundedTables,
+    );
     if (nativePreview != null) {
       if (widget.immersive) {
         final displayTitle = title == null || title.isEmpty ? l10n.chatIntelligentUiTitle : title;
@@ -765,6 +842,17 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         icon: AppIcons.generating,
         title: semanticTitle,
         headerPadding: _compactHeaderPadding,
+        trailing: widget.allowFullscreen
+            ? IconButton(
+                onPressed: _openFullscreen,
+                tooltip: l10n.activityStepFullScreen,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                icon: const Icon(AppIcons.fullscreen, size: 20),
+              )
+            : null,
         children: [nativePreview],
       );
     }
@@ -839,6 +927,7 @@ class _IntelligentUiCardState extends ConsumerState<IntelligentUiCard> {
         builder: (_) => _IntelligentUiFullscreenPage(
           artifact: widget.artifact,
           onSendPrompt: widget.onSendPrompt,
+          onSendNewSession: widget.onSendNewSession,
           readOnly: widget.readOnly,
         ),
       ),
@@ -925,15 +1014,24 @@ class _ImmersiveCard extends StatelessWidget {
   }
 }
 
-class _IntelligentUiFullscreenPage extends StatelessWidget {
-  const _IntelligentUiFullscreenPage({required this.artifact, this.onSendPrompt, required this.readOnly});
+class _IntelligentUiFullscreenPage extends ConsumerWidget {
+  const _IntelligentUiFullscreenPage({
+    required this.artifact,
+    this.onSendPrompt,
+    this.onSendNewSession,
+    required this.readOnly,
+  });
 
   final IntelligentUiArtifact artifact;
   final Future<bool> Function(String text)? onSendPrompt;
+  final IntelligentUiNewSessionHandler? onSendNewSession;
   final bool readOnly;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<String?>(currentSessionProvider, (previous, next) {
+      if (previous != next) unawaited(Navigator.of(context).maybePop());
+    });
     final l10n = context.l10n;
     final title = (artifact.title ?? IntelligentUiNativePreview.titleOf(artifact))?.trim();
     return Scaffold(
@@ -945,6 +1043,7 @@ class _IntelligentUiFullscreenPage extends StatelessWidget {
             IntelligentUiCard(
               artifact: artifact,
               onSendPrompt: onSendPrompt,
+              onSendNewSession: onSendNewSession,
               readOnly: readOnly,
               immersive: true,
               unboundedTables: true,

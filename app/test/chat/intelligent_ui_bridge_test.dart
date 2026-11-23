@@ -48,6 +48,30 @@ void main() {
     });
   });
 
+  test('parses a newSession action', () {
+    final msg = parseIntelligentUiBridgeMessage(
+      jsonEncode({'token': 't', 'type': 'newSession', 'id': 7, 'text': '继续', 'nodeId': 'choice-1'}),
+      't',
+    );
+    expect(msg, isNotNull);
+    expect(msg!.type, 'newSession');
+    expect(msg.id, 7);
+    expect(msg.text, '继续');
+    expect(msg.nodeId, 'choice-1');
+  });
+
+  test('newSession without nodeId still parses', () {
+    final msg = parseIntelligentUiBridgeMessage(
+      jsonEncode({'token': 't', 'type': 'newSession', 'id': 8, 'text': '继续'}),
+      't',
+    );
+    expect(msg, isNotNull);
+    expect(msg!.type, 'newSession');
+    expect(msg.id, 8);
+    expect(msg.text, '继续');
+    expect(msg.nodeId, isNull);
+  });
+
   test('parses openLink url', () {
     final msg = parseIntelligentUiBridgeMessage('{"token":"t","type":"openLink","url":"https://example.com/a"}', 't');
     expect(msg, isNotNull);
