@@ -11,6 +11,7 @@ void main() {
       expect(shell, contains('host.sendNewSession=function(text,nodeId)'));
       expect(shell, contains("send('newSession',{id:id,text:String(text),nodeId:String(nodeId||'')})"));
       expect(shell, contains('delete host.sendNewSession'));
+      expect(shell, contains("if(error==='cancelled') err.name='AbortError';"));
     });
 
     test('offline renderer forwards sendNewSession with the node id', () {
@@ -18,6 +19,7 @@ void main() {
 
       expect(renderer, contains('sendNewSession:t.sendNewSession?'));
       expect(renderer, contains('sendNewSession(s.admitPrompt(v),S)'));
+      expect(renderer, contains('AbortError'));
     });
 
     test('asset version records the local patch', () {
@@ -25,6 +27,7 @@ void main() {
 
       expect(version, contains('deepseek-harness-intelligent-ui 0.2.16'));
       expect(version, contains('local patch: sendNewSession'));
+      expect(version, contains('cancellation handling'));
     });
   });
 }

@@ -3,4 +3,4 @@ upstream: https://github.com/dreamfarer-space/deepseek-harness-intelligent-ui
 commit: bbd6f8c
 file: renderer/renderer.js
 variant: offline (built with `npm run build:offline`)
-local patch: sendNewSession nodeId propagation + retry/cleanup hardening
+local patch: sendNewSession nodeId propagation + retry/cleanup hardening + cancellation handling

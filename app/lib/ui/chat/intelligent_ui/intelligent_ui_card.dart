@@ -162,7 +162,10 @@ String buildIntelligentUiHtml({
     var item=pending.get(id);
     if(!item) return;
     pending.delete(id);
-    if(ok) item.resolve(); else item.reject(new Error(error||'failed'));
+    if(ok) { item.resolve(); return; }
+    var err=new Error(error||'failed');
+    if(error==='cancelled') err.name='AbortError';
+    item.reject(err);
   };
   var host={
     sendPrompt:function(text){
