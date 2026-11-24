@@ -65,6 +65,7 @@ const _pages = {
   'page:phoneAlwaysAllow',
   'page:phoneAndroidShell',
   'page:phoneDnd',
+  'page:phoneSkills',
   'page:phoneUnlocks',
 };
 const _rows = {
@@ -72,6 +73,7 @@ const _rows = {
   'phone-confirm',
   'phone-auto-collapse',
   'phone-edge-glow',
+  'phone-system-island',
   'phone-return',
   'phone-background-guide',
   'phone-files',

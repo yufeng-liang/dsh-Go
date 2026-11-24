@@ -492,6 +492,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
 
   /// How far the text still has to rise. Only ever a transform.
   final _behind = ValueNotifier(0.0);
+  final _painter = TextPainter();
   late String _shown = fluidTickerText(widget.text);
 
   Duration _last = Duration.zero;
@@ -508,6 +509,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
   void initState() {
     super.initState();
     _pacer = StreamPacer(shown: widget.text.length);
+    PaintingBinding.instance.systemFonts.addListener(_painter.markNeedsLayout);
   }
 
   @override
@@ -527,6 +529,8 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
 
   @override
   void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_painter.markNeedsLayout);
+    _painter.dispose();
     _ticker.dispose();
     _behind.dispose();
     super.dispose();
@@ -536,6 +540,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
     final seconds = (elapsed - _last).inMicroseconds / Duration.microsecondsPerSecond;
     _last = elapsed;
     _sinceLine += seconds;
+    final wasCaughtUp = _pacer.caughtUp(widget.text.length);
     _pacer.advance(seconds, widget.text.length);
     _sincePublish += seconds;
     final behind = _behind.value;
@@ -547,21 +552,24 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
     // The last of it goes out at once: the ticker is about to stop.
     if (_sincePublish >= _publishEvery || _pacer.caughtUp(widget.text.length)) {
       _sincePublish = 0;
-      final next = fluidTickerText(widget.text.substring(0, _pacer.shown));
-      if (next != _shown) setState(() => _shown = next);
+      if (!wasCaughtUp) {
+        final next = fluidTickerText(widget.text.substring(0, _pacer.shown));
+        if (next != _shown) setState(() => _shown = next);
+      }
     }
     if (_pacer.caughtUp(widget.text.length) && _behind.value == 0) _ticker.stop();
   }
 
   /// Text height at [width], with what growing by a line means for the motion.
   double _measure(TextStyle? style, TextScaler scaler, double width, double lineHeight, double window, String text) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: Directionality.of(context),
-      textScaler: scaler,
-    )..layout(maxWidth: width);
-    final height = painter.height;
-    painter.dispose();
+    // Kept across builds: an arrival rebuilds before the shown text changes, and then
+    // the painter hands back its last layout.
+    _painter
+      ..text = TextSpan(text: text, style: style)
+      ..textDirection = Directionality.of(context)
+      ..textScaler = scaler
+      ..layout(maxWidth: width);
+    final height = _painter.height;
     // Only what goes past the window has to rise: below that the text grows into the
     // space it has, and any distance saved up would jump when the window fills.
     final past = math.max(_height, window);

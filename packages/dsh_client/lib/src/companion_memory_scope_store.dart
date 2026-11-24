@@ -47,15 +47,35 @@ extension CompanionMemoryScopeStore on CompanionMemoryStore {
   }) {
     _checkMemoryCharacter(characterId);
     final at = _checkedNow();
-    final domain = _memoryDomainCards(characterId);
+    final domain = _memoryDomainCards(characterId, includeEvidence: false);
+    _loadRetrievalEvidence(domain);
     final explicit = {...explicitTopicIds, if (input != null) ...explicitMemoryTopics(input, domain)};
-    return [
+    final candidates = [
       for (final card in domain)
-        if (card['layer'] == 'card' &&
-            isMemoryContextEligible(card, nowMs: at, explicitTopicIds: explicit) &&
-            _memoryReferencesCurrent(card['id'] as String))
-          card,
+        if (card['layer'] == 'card' && isMemoryContextEligible(card, nowMs: at, explicitTopicIds: explicit)) card,
     ];
+    if (candidates.isEmpty) return candidates;
+    final stale = _staleReferenceRoots([for (final card in candidates) card['id'] as String]);
+    return candidates..removeWhere((card) => stale.contains(card['id']));
+  }
+
+  void _loadRetrievalEvidence(Iterable<MemoryRow> cards) {
+    final evidence = {for (final card in cards) card['id']: card['evidence'] as List<MemoryRow>};
+    if (evidence.isEmpty) return;
+    final statement = _db.prepare('''
+      $_memoryEvidenceSelect
+      WHERE s.card_id IN (SELECT value FROM json_each(?))
+      ORDER BY s.card_id, s.support_group, m.first_seq
+    ''');
+    try {
+      final rows = statement.selectCursor([jsonEncode(evidence.keys.toList())]);
+      while (rows.moveNext()) {
+        final source = rows.current;
+        evidence[source['card_id']]!.add(Map<String, Object?>.from(source));
+      }
+    } finally {
+      statement.close();
+    }
   }
 
   /// A presentation query is deliberately separate from the model's grant
@@ -68,6 +88,42 @@ extension CompanionMemoryScopeStore on CompanionMemoryStore {
             card['status'] != 'withdrawn' &&
             _memoryReferencesCurrent(card['id'] as String))
           card,
+    ];
+  }
+
+  /// The rows of [memoryPageCards] the agent always carries: [characterId]'s
+  /// impression and the diaries of local days from [fromDay] up to
+  /// [beforeDay]. Narrowed in SQL, since reading and checking a card takes
+  /// several queries of its own and the domain holds every card.
+  List<MemoryRow> memoryFixedLayerCards({
+    required String? characterId,
+    required String fromDay,
+    required String beforeDay,
+    String? explicitUserInput,
+  }) {
+    _checkMemoryCharacter(characterId);
+    final fixed = [
+      for (final card in _memoryDomainCards(
+        characterId,
+        where:
+            "AND c.status!='withdrawn' AND ((c.collection='impression' AND c.character_id=?) "
+            "OR (c.collection='diary' AND c.local_day>=? AND c.local_day<?))",
+        args: [characterId, fromDay, beforeDay],
+      ))
+        if (_memoryReferencesCurrent(card['id'] as String)) card,
+    ];
+    var explicit = const <String>{};
+    if (explicitUserInput != null &&
+        explicitUserInput.trim().isNotEmpty &&
+        fixed.any((card) => card['topic_mode'] == 'never')) {
+      // A card outside these fixed layers can make the target ambiguous, or
+      // identify the same topic with a different keyword. Use the whole domain.
+      explicit = explicitMemoryTopics(explicitUserInput, _memoryDomainCards(characterId));
+    }
+    final at = _checkedNow();
+    return [
+      for (final card in fixed)
+        if (isMemoryContextEligible(card, nowMs: at, explicitTopicIds: explicit)) card,
     ];
   }
 
@@ -135,19 +191,24 @@ extension CompanionMemoryScopeStore on CompanionMemoryStore {
     }
   }
 
-  List<MemoryRow> _memoryDomainCards(String? characterId) => [
+  List<MemoryRow> _memoryDomainCards(
+    String? characterId, {
+    String where = '',
+    List<Object?> args = const [],
+    bool includeEvidence = true,
+  }) => [
     for (final row in _db.select(
       '''
       SELECT c.*,t.mode AS topic_mode FROM memory_cards c JOIN memory_topics t ON t.id=c.topic_id
-      WHERE c.character_id IS NULL OR c.character_id=? ORDER BY c.id
+      WHERE (c.character_id IS NULL OR c.character_id=?) $where ORDER BY c.id
     ''',
-      [characterId],
+      [characterId, ...args],
     ))
-      _memoryDomainCard(row),
+      _memoryDomainCard(row, includeEvidence: includeEvidence),
   ];
 
-  MemoryRow _memoryDomainCard(Row row) {
-    final card = _card(row);
+  MemoryRow _memoryDomainCard(Row row, {required bool includeEvidence}) {
+    final card = _card(row, includeEvidence: includeEvidence);
     if (card['collection'] != 'person') return card;
     final aliases = [
       for (final alias in _db.select('SELECT alias FROM memory_person_aliases WHERE card_id=? ORDER BY alias', [
@@ -160,34 +221,36 @@ extension CompanionMemoryScopeStore on CompanionMemoryStore {
       'aliases': aliases,
       // Aliases are model-written names for this exact person card. They aid
       // the existing lexical fallback, without becoming a merge decision.
-      'keywords': <dynamic>{...(card['keywords'] as List), ...aliases}.toList(),
+      'keywords': <String>{...(card['keywords'] as List<String>), ...aliases}.toList(),
     };
   }
 
-  bool _memoryReferencesCurrent(String cardId) {
-    final rows = _db.select('SELECT character_id FROM memory_cards WHERE id=?', [cardId]);
-    if (rows.isEmpty) return false;
-    final characterId = rows.single['character_id'];
-    // UNION, rather than UNION ALL, keeps traversal finite even if an old
-    // stored graph contains a cycle. A missing or changed ancestor is stale.
-    return _db
-        .select(
-          '''
-      WITH RECURSIVE ancestors(id,expected_rev) AS (
-        SELECT parent_card_id,parent_row_rev FROM memory_card_references WHERE card_id=?
+  bool _memoryReferencesCurrent(String cardId) => _staleReferenceRoots([cardId]).isEmpty;
+
+  /// The [cardIds] that are missing, or that reach an ancestor which is
+  /// missing, at another revision than referenced, or private to a different
+  /// character than the root. Only current nodes are expanded; UNION keeps
+  /// traversal finite even if an old stored graph contains a cycle.
+  Set<Object?> _staleReferenceRoots(List<String> cardIds) => {
+    for (final row in _db.select(
+      '''
+      WITH RECURSIVE ancestors(root,id,root_character,current) AS (
+        SELECT j.value,j.value,c.character_id,c.id IS NOT NULL
+          FROM json_each(?) j LEFT JOIN memory_cards c ON c.id=j.value
         UNION
-        SELECT r.parent_card_id,r.parent_row_rev
-          FROM memory_card_references r JOIN ancestors a ON r.card_id=a.id
+        SELECT a.root,r.parent_card_id,a.root_character,
+               p.id IS NOT NULL AND p.row_rev=r.parent_row_rev
+                 AND (p.character_id IS NULL OR p.character_id IS a.root_character)
+          FROM ancestors a JOIN memory_card_references r ON r.card_id=a.id
+          LEFT JOIN memory_cards p ON p.id=r.parent_card_id
+          WHERE a.current
       )
-      SELECT 1 FROM ancestors a LEFT JOIN memory_cards p ON p.id=a.id
-      WHERE p.id IS NULL OR p.row_rev!=a.expected_rev
-        OR (p.character_id IS NOT NULL AND (? IS NULL OR p.character_id!=?))
-      LIMIT 1
+      SELECT DISTINCT root FROM ancestors WHERE NOT current
     ''',
-          [cardId, characterId, characterId],
-        )
-        .isEmpty;
-  }
+      [jsonEncode(cardIds)],
+    ))
+      row['root'],
+  };
 }
 
 const _memoryScopeSchema16 = '''

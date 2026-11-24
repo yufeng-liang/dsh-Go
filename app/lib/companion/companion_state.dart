@@ -69,6 +69,7 @@ String _hostKey(HostRef host) => '${host.kind.name}:${host.id}';
 class CompanionSessions extends Notifier<Map<String, CompanionBinding>> {
   final _loaded = Completer<void>();
   int _ownershipEpoch = 0;
+  int _bindingsEpoch = 0;
 
   @override
   Map<String, CompanionBinding> build() {
@@ -83,11 +84,12 @@ class CompanionSessions extends Notifier<Map<String, CompanionBinding>> {
   }
 
   Future<void> _load() async {
-    final epoch = _ownershipEpoch;
+    // Reconnecting does not invalidate the saved bindings of every host.
+    final epoch = _bindingsEpoch;
     final prefs = await SharedPreferences.getInstance();
     try {
       final raw = prefs.getString(_sessionsKey);
-      if (raw != null && ref.mounted && epoch == _ownershipEpoch) {
+      if (raw != null && ref.mounted && epoch == _bindingsEpoch) {
         state = {
           for (final MapEntry(:key, :value) in (jsonDecode(raw) as Map<String, Object?>).entries)
             key: CompanionBinding.fromJson(value! as Map<String, Object?>),
@@ -128,13 +130,23 @@ class CompanionSessions extends Notifier<Map<String, CompanionBinding>> {
     await _loaded.future;
     checkCurrent();
     final existing = of(host);
+    var gone = false;
     if (existing != null &&
         existing.full &&
         (memoryArchiveId == null ||
             (existing.memoryArchiveId == memoryArchiveId && existing.memoryControlRevision == memoryControlRevision))) {
-      final gone = await _gone(conn.client, existing.sessionId);
+      gone = await _gone(conn.client, existing.sessionId);
       checkCurrent();
       if (!gone) return existing;
+    }
+
+    if (existing != null && !gone) {
+      try {
+        await conn.client.archiveSession(existing.sessionId, stopActivity: false);
+      } on DshRemoteException catch (error) {
+        if (error.code != 'session/not-found') rethrow;
+      }
+      checkCurrent();
     }
 
     final sessions = owner.read(sessionsProvider.notifier);
@@ -180,9 +192,15 @@ class CompanionSessions extends Notifier<Map<String, CompanionBinding>> {
     }
   }
 
+  /// Retires pending session checks without discarding the selected model.
+  void retirePending() {
+    _ownershipEpoch++;
+  }
+
   /// Starts over on the active host: the next message opens a new conversation.
   Future<void> forget() async {
     _ownershipEpoch++;
+    _bindingsEpoch++;
     state = {...state}..remove(_hostKey(ref.read(activeHostProvider)));
     await _save();
   }
@@ -191,6 +209,7 @@ class CompanionSessions extends Notifier<Map<String, CompanionBinding>> {
   /// The old transcripts stay visible on their hosts, but are never continued.
   Future<void> forgetAll() async {
     _ownershipEpoch++;
+    _bindingsEpoch++;
     state = const {};
     await _save();
   }
@@ -255,7 +274,14 @@ class CompanionNameSetting extends Notifier<String?> {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
+    // The drawer reads her name too, on every screen: no stored name is
+    // just the pack's own, never an error there.
+    final SharedPreferences prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } on Object {
+      return;
+    }
     final saved = prefs.getString(_nameKey)?.trim();
     if (saved != null && saved.isNotEmpty && ref.mounted && state == null) state = saved;
   }

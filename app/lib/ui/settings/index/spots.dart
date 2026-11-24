@@ -72,6 +72,7 @@ enum SettingsPageId {
   phoneAlwaysAllow,
   phoneAndroidShell,
   phoneDnd,
+  phoneSkills,
   phoneUnlocks,
   systemActions,
   linuxEnvironment,
@@ -472,6 +473,13 @@ final _pages = <SettingsPageMeta>[
     condition: SpotCondition.phoneControlOn,
   ),
   SettingsPageMeta(
+    SettingsPageId.phoneSkills,
+    title: (l) => l.phoneSkillsTitle,
+    parent: SettingsPageId.phone,
+    keywords: (l) => l.searchKwPhoneSkills,
+    condition: SpotCondition.phoneControlOn,
+  ),
+  SettingsPageMeta(
     SettingsPageId.phoneUnlocks,
     title: (l) => l.phoneUnlockTitle,
     parent: SettingsPageId.phone,
@@ -797,6 +805,13 @@ abstract final class Spots {
     page: SettingsPageId.phone,
     title: (l) => l.phoneEdgeGlow,
     keywords: (l) => l.searchKwPhoneEdgeGlow,
+    condition: SpotCondition.phoneControlOn,
+  );
+  static final phoneSystemIsland = SettingSpot(
+    'phone-system-island',
+    page: SettingsPageId.phone,
+    title: (l) => l.phoneSystemIsland,
+    keywords: (l) => l.searchKwPhoneSystemIsland,
     condition: SpotCondition.phoneControlOn,
   );
   static final phoneReturn = SettingSpot(
@@ -1257,6 +1272,7 @@ final _rows = <SettingSpot>[
   Spots.phoneConfirm,
   Spots.phoneAutoCollapse,
   Spots.phoneEdgeGlow,
+  Spots.phoneSystemIsland,
   Spots.phoneReturn,
   Spots.phoneBackgroundGuide,
   Spots.pluginsMarket,

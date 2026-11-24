@@ -38,6 +38,9 @@ class _RpcHost extends DshCarrier {
     return RpcOk(switch (endpoint) {
       'session/create' => {'sessionId': '$name-created'},
       'session/projections' => {'sessionId': '$name-existing'},
+      'workspace/archiveSession' => {
+        'archivedSessionIds': [(args['request']! as Map)['sessionId']],
+      },
       'commands/execute' => {
         'result': {'kind': 'success'},
       },
@@ -190,6 +193,48 @@ void main() {
       'a-created',
     );
     expect(room.a.argsOf('session/create'), hasLength(1));
+
+    expect(room.a.argsOf('workspace/archiveSession').single['request'], {
+      'sessionId': 'a-existing',
+      'stopActivity': false,
+    });
+    expect(room.a.calls.map((call) => call.$1), [
+      'session/projections',
+      'workspace/archiveSession',
+      'session/create',
+      'agentPresets/list',
+      'agentPresets/select',
+    ]);
+
+    room.a.held['workspace/archiveSession'] = (_) async =>
+        RpcError(DshRemoteException('archive/denied', 'archive refused'));
+    expect(
+      await _outcome(room.sessions.ensure(memoryArchiveId: 'phone-archive', memoryControlRevision: 4)),
+      isA<DshRemoteException>().having((error) => error.code, 'code', 'archive/denied'),
+    );
+    expect(room.a.argsOf('session/create'), hasLength(1));
+    expect(room.sessions.of(HostRef.local)?.sessionId, 'a-created');
+    expect(room.sessions.of(HostRef.local)?.memoryControlRevision, 3);
+
+    room.a.held['workspace/archiveSession'] = (_) async =>
+        RpcError(DshRemoteException('session/not-found', 'gone'));
+    final replacement = await room.sessions.ensure(memoryArchiveId: 'phone-archive', memoryControlRevision: 4);
+    expect(replacement.sessionId, 'a-created');
+    expect(replacement.memoryArchiveId, 'phone-archive');
+    expect(replacement.memoryControlRevision, 4);
+    expect(room.a.argsOf('session/create'), hasLength(2));
+
+    final archive = Completer<RpcResult>();
+    room.a.held['workspace/archiveSession'] = (_) => archive.future;
+    final pending = _outcome(room.sessions.ensure(memoryArchiveId: 'phone-archive', memoryControlRevision: 5));
+    await _flush();
+    expect(room.a.argsOf('workspace/archiveSession'), hasLength(4));
+    expect(room.a.argsOf('session/create'), hasLength(2));
+    room.sessions.retirePending();
+    archive.complete(const RpcOk({'archivedSessionIds': ['a-created']}));
+    expect(await pending, isA<DshClosedException>());
+    expect(room.a.argsOf('session/create'), hasLength(2));
+    expect(room.sessions.of(HostRef.local), same(replacement));
   });
 
   test('forgetAll during startup prevents a delayed preference read from restoring old bindings', () async {
@@ -203,13 +248,26 @@ void main() {
   });
 
   test('a startup intent does not move to B while preferences load', () async {
+    SharedPreferences.setMockInitialValues({
+      'companion_sessions': jsonEncode({
+        'local:local': {'id': 'a-existing', 'full': true},
+        '${_Room.bHost.kind.name}:${_Room.bHost.id}': {'id': 'b-existing', 'full': true},
+      }),
+    });
     final room = _Room();
     final pending = _outcome(room.sessions.ensure());
     room.host.change(_Room.bHost);
     final result = await pending;
     expect(room.b.argsOf('session/create'), isEmpty);
     expect(result, isA<DshClosedException>());
-    expect(room.sessions.of(_Room.bHost), isNull);
+    expect(room.sessions.of(HostRef.local)?.sessionId, 'a-existing');
+    expect(room.sessions.of(_Room.bHost)?.sessionId, 'b-existing');
+    expect((await room.sessions.ensure()).sessionId, 'b-existing');
+    expect(room.b.calls.map((call) => call.$1), ['session/projections']);
+    room.host.change(HostRef.local);
+    await _flush();
+    expect((await room.sessions.ensure()).sessionId, 'a-existing');
+    expect(room.a.calls.map((call) => call.$1), ['session/projections']);
   });
 
   test('a missing-session reply from A cannot create on B or bind its id to A', () async {
@@ -336,12 +394,45 @@ void main() {
   });
 
   test('an existing session is reused without a create or configuration call', () async {
-    _savedA();
+    SharedPreferences.setMockInitialValues({
+      'companion_sessions': jsonEncode({
+        'local:local': {
+          'id': 'a-existing',
+          'full': true,
+          'memoryArchiveId': 'phone-archive',
+          'memoryControlRevision': 2,
+        },
+      }),
+    });
     final room = _Room();
     await room.loaded();
     final binding = await room.sessions.ensure();
     expect(binding.sessionId, 'a-existing');
     expect(room.a.calls.map((c) => c.$1), ['session/projections']);
+
+    final projection = Completer<RpcResult>();
+    room.a.held['session/projections'] = (_) => projection.future;
+    final pending = _outcome(room.sessions.ensure());
+    await _flush();
+    expect(room.a.argsOf('session/projections'), hasLength(2));
+    room.sessions.retirePending();
+    expect(room.sessions.of(HostRef.local), same(binding));
+    projection.complete(const RpcOk({'sessionId': 'a-existing'}));
+    expect(await pending, isA<DshClosedException>());
+
+    final reused = await room.sessions.ensure();
+    expect(reused, same(binding));
+    expect(reused.memoryArchiveId, 'phone-archive');
+    expect(reused.memoryControlRevision, 2);
+    expect(room.a.calls.map((call) => call.$1), [
+      'session/projections',
+      'session/projections',
+      'session/projections',
+    ]);
+    expect(room.a.argsOf('session/create'), isEmpty);
+    expect(room.a.argsOf('workspace/archiveSession'), isEmpty);
+    expect(room.a.argsOf('agentPresets/list'), isEmpty);
+    expect(room.a.argsOf('agentPresets/select'), isEmpty);
   });
 
   test('starting over retires an unfinished creation instead of restoring its binding', () async {

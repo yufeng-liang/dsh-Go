@@ -31,12 +31,20 @@ class CompanionMemoryEmbeddings extends ChangeNotifier {
   bool _failed = false;
   int _generation = 0;
   String? _modelKey;
+
+  /// The last query's vector: each tool round trip of a turn ranks again with
+  /// the same text, which encodes to the same vector under the same model.
+  ({String modelKey, String text, List<double> vector})? _lastQuery;
   Future<bool>? _loading;
   Future<void>? _downloadFuture;
   CompanionMemoryModelDownload? _installer;
   double _progress = 0;
 
   bool get supported => _supported;
+
+  /// Whether [rank] already knows it will answer null for any candidates,
+  /// without loading the model: unsupported, downloading, or checked missing.
+  bool get knownUnavailable => !_supported || _downloading || (_checked && _modelKey == null);
   double get progress => _progress;
   bool get canCancelDownload => _downloading && !_downloadCancelled && (_installer?.canCancel ?? true);
   CompanionMemoryModelStatus get status => !_supported
@@ -162,11 +170,14 @@ class CompanionMemoryEmbeddings extends ChangeNotifier {
 
   /// Null means the optional encoder is unavailable. An empty list is a real
   /// empty candidate/result set. Neither result is a model reference grant.
+  /// Query text controls relevance. Only [explicitInput] may supply the existing
+  /// one-selection topic exception; observations leave it null.
   Future<List<MemoryRow>?> rank({
     required CompanionMemoryStore store,
     required String? characterId,
     required String query,
     required bool Function() isCurrent,
+    String? explicitInput,
     int limit = 6,
   }) async {
     if (limit < 1 || limit > 20) throw ArgumentError.value(limit, 'limit');
@@ -178,7 +189,7 @@ class CompanionMemoryEmbeddings extends ChangeNotifier {
     }
 
     current();
-    final candidates = store.memoryRetrievalCandidates(characterId: characterId, input: query);
+    final candidates = store.memoryRetrievalCandidates(characterId: characterId, input: explicitInput);
     if (candidates.isEmpty) return const [];
     if (!await ensureReady()) {
       current();
@@ -198,7 +209,11 @@ class CompanionMemoryEmbeddings extends ChangeNotifier {
         modelKey: modelKey,
         dimensions: 512,
       );
-      final queryVector = (await _vectors([query], query: true, modelKey: modelKey)).single;
+      final last = _lastQuery;
+      final queryVector = last != null && last.modelKey == modelKey && last.text == query
+          ? last.vector
+          : (await _vectors([query], query: true, modelKey: modelKey)).single;
+      _lastQuery = (modelKey: modelKey, text: query, vector: queryVector);
       sameModel();
       final missing = [
         for (final card in candidates)
@@ -231,7 +246,7 @@ class CompanionMemoryEmbeddings extends ChangeNotifier {
       // the same float32 cache representation for old and newly encoded rows.
       final revisions = {for (final card in candidates) card['id']: card['row_rev']};
       final fresh = [
-        for (final card in store.memoryRetrievalCandidates(characterId: characterId, input: query))
+        for (final card in store.memoryRetrievalCandidates(characterId: characterId, input: explicitInput))
           if (revisions[card['id']] == card['row_rev']) card,
       ];
       final vectors = store.memoryEmbeddings(

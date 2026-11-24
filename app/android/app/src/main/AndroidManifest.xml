@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <!-- Only the optional background protection uses approximate location. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -21,6 +23,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Composer voice input (voice/VoicePlugin.kt), asked for on the first tap of the mic. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Remote 扫码配对电脑 (ui/remote/pairing_page.dart, mobile_scanner), asked for when the
          scanner opens; the photo and paste paths work without it. Never required. -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -218,6 +221,36 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.NoDisplay" />
 
+        <activity
+            android:name=".companion.CompanionAssistantUnlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <service
+            android:name=".companion.CompanionAssistantService"
+            android:exported="true"
+            android:label="@string/companion_assistant_label"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/companion_assistant" />
+        </service>
+        <service
+            android:name=".companion.CompanionAssistantSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name=".companion.CompanionAssistantRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.RECORD_AUDIO">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data android:name="android.speech" android:resource="@xml/companion_assistant_recognition" />
+        </service>
+
         <!-- The privileged gate starts only this inert receiver. Ordinary apps cannot launch it. -->
         <activity
             android:name=".phone.background.BackgroundProbeActivity"
@@ -239,7 +272,30 @@
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
+        <!-- The explicit companion switch enables this component. No separate process or FGS. -->
+        <service android:name=".companion.NoticeListener"
+            android:enabled="false"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <!-- Quick Settings tile 「新对话」 (tile/NewChatTileService.kt). -->
+        <!-- Same cached Flutter engine; explicit default-off companion residency. -->
+        <service
+            android:name=".companion.CompanionAlwaysOnService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled companion conversation and inline replies" />
+        </service>
+        <receiver android:name=".phone.CompanionScreenPauseReceiver" android:exported="false" />
+        <activity android:name=".phone.CompanionScreenProjectionActivity" android:exported="false"
+            android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <service android:name=".phone.CompanionScreenProjectionService" android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
         <service
             android:name=".tile.NewChatTileService"
             android:exported="true"

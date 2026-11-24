@@ -14,8 +14,12 @@ import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import io.github.ccch1mneyyy.dsh_app.phone.DiagnosticsTool
 import org.json.JSONArray
 import org.json.JSONObject
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillStore
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillValidation
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillProblem
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillRoute
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 
 /**
@@ -136,6 +140,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     fun addSink(sink: EventSink) = synchronized(sinks) { sinks += sink }
     fun removeSink(sink: EventSink) = synchronized(sinks) { sinks -= sink }
+
+    internal fun shouldAutoStart(autoStart: Boolean): Boolean =
+        LaunchStart.shouldStart(autoStart, phase.wire, safeState.wire, autoSafe(), strikes)
 
     fun status(): Map<String, Any?> = mapOf(
         "abi" to (runCatching { manifest.abi }.getOrNull() ?: Build.SUPPORTED_ABIS.firstOrNull()),
@@ -418,6 +425,24 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         origin.runtime === this && phase == Phase.RUNNING && !runSafe && !resetting &&
             runGen == origin.generation && stopGen < origin.generation &&
             phoneSkillStoppedGeneration < origin.generation && runGen == origin.generation
+
+    /** One rootfs owner for native UI mutations, learned-skill reads, reset and publication. */
+    internal fun <T> phoneSkills(origin: PhoneSkillOrigin?, work: (PhoneSkillStore) -> T):
+        CompletableFuture<T> {
+        val result = CompletableFuture<T>()
+        worker.execute {
+            try {
+                if (resetting || origin != null && !phoneSkillOriginCurrent(origin)) {
+                    throw PhoneSkillProblem("unavailable", "Runtime retired.")
+                }
+                val store = PhoneSkillStore(installer.rootfs, File(app.filesDir, "phone-skills"),
+                    PhoneSkillValidation::clean,
+                    PhoneSkillValidation::redactLegacy)
+                result.complete(work(store))
+            } catch (e: Exception) { result.completeExceptionally(e) }
+        }
+        return result
+    }
 
     /** Uses the existing rootfs worker. The only descriptor input is the native reviewed table;
      * private UI/JSON never supplies it. An empty table has no executable App registration.

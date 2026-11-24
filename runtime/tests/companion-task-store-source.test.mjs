@@ -56,6 +56,19 @@ async function readyToPublish(store,id='t-1') {
 const artifact = {relativePath:'今日待办.md',mediaType:'text/markdown',size:9,sha256:'a'.repeat(64),
   identity:'1:3',verifiedAtMs:2,sourceCount:1};
 
+test('an empty task store builds the record validator only on the first task write', async t => {
+  // Count the factory in the pinned Zod lazy schema through the routed store.
+  const definition = recordSchema.def;
+  const factory = definition.getter;
+  let builds = 0;
+  t.mock.method(definition, 'getter', () => { builds++; return factory(); });
+  const {store} = await opened(t);
+  assert.equal(builds, 0);
+  await store.cancel('first-task', cancel(store));
+  await store.cancel('second-task', cancel(store));
+  assert.equal(builds, 1);
+});
+
 test('actual routed backend persists host identity; close/reopen keeps it',async t=>{
   const {store,root}=await opened(t);const id=store.hostStoreId;
   assert.equal(JSON.parse(await readFile(join(root,'companion_tasks.json'),'utf8')).global.hostStoreId,id);
@@ -114,7 +127,13 @@ test('stored selection and whole input are private and cannot change on recovery
   const read=await store.claimStep('t-1',1,'readInputs',{reserveMs:100});
   await store.saveInputs(read,{directory,entries:[{name:'one.md',version:'opaque',text:'独有正文'}],scope:{}});
   assert.equal(JSON.stringify(store.snapshot('t-1')).includes('独有正文'),false);
-  assert.equal(store.read('t-1').notes['1'].inputs.entries[0].text,'独有正文');
+  const record=store.read('t-1'),input=record.notes['1'].inputs.entries[0];
+  assert.equal(input.text,'独有正文');
+  // The public projection must not walk private notes (they may hold a whole workbook).
+  let bodyReads=0;
+  Object.defineProperty(input,'text',{enumerable:true,get(){bodyReads++;return '独有正文';}});
+  store.project(record);
+  assert.equal(bodyReads,0);
   await assert.rejects(store.saveSelection(select,{directory,entries:[],scope:{}}),/already saved/);
 });
 test('unknown model claim reserves time and cannot make another physical attempt',async t=>{
