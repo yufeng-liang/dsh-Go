@@ -60,7 +60,7 @@
     },
     {
       "path": "app/test/companion/companion_recall_room_test.dart",
-      "sha256": "2a2a8a20eb9ac58f3d4535340f6af13bbdfd259f1f0fe70bf8c4b88889ef146c"
+      "sha256": "666f57a088eb108af5870030f0cf86390210bcdfd715885c109c7b8541af6f4b"
     },
     {
       "path": "app/test/companion/companion_signal_initiative_test.dart",
@@ -92,7 +92,7 @@
     },
     {
       "path": "app/test/flutter_test_config.dart",
-      "sha256": "16b5eeafdad695f862a923ddcae1d46c750f81bf8ba03a7bb2752d09def3faa9"
+      "sha256": "79308ad705ccf2d334d3feee54064e991b6c0cbb180d3a1d8582b705db7c7a82"
     },
     {
       "path": "app/test/support/bundle.dart",
@@ -116,7 +116,7 @@
     },
     {
       "path": "app/test/support/test_fonts.dart",
-      "sha256": "48b8cb6c3a43109b96d140021cc15fe6ae89481ceca534cf7d082a211239732c"
+      "sha256": "29f1c57e1ec949c1457f563d73450cfc6e19582afa4b14b7d5ba9ece7b09e868"
     },
     {
       "path": "app/tool/companion_memory_replay_test.dart",
