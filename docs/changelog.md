@@ -2,7 +2,7 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
-## 未发布 · Unreleased
+## 未发布  Unreleased
 
 ### 中文
 
@@ -15,6 +15,40 @@
 - **Intelligent UI follows upstream 0.2.16.** Bundled renderer upgraded to deepseek-harness-intelligent-ui 0.2.16 (commit bbd6f8c), adding 9 components (Accordion, Steps, KeyValue, EmptyState, FollowUp, Sources, Segmented, Calendar, Audio; 30 → 39 total); Chart gains horizontal-bar/radar, Choice multi-select, Form switch/tags/daterange fields. Existing dsh-go adaptation patches (height measurement, CSP media allowance, Bilibili cover, relaxed mapTiles/allowMedia policy) are retained.
 - **Fix.** Since 0.2.16 `ui_render`/`ui_compose` return a validated normalized tree in `meta.normalized`; dsh-go now prefers a valid normalized definition so lenient-validated UIs are not silently dropped.
 - **Fix mobile Intelligent UI tables.** Long tables are capped inside the card with a visible vertical scrollbar and equal-width wrapping columns, no longer stretching the card or overflowing horizontally; the full-screen view removes the cap and expands naturally.
+
+## 1.4.0 · 2026-11-25
+
+### 中文
+
+#### 新功能
+
+- **伙伴小屋有了完整模式。** 伙伴可以在自己的 DSH 会话里工作，小屋里能直接看进度、打电话或打开她的主会话。也可以养多个伙伴，或在 Android 上把伙伴设为系统默认助理。
+- **Android 手机操控有了悬浮岛和手机技能。** 操作进度能显示在屏幕顶部或支持的系统灵动岛里。完成任务后，可以把做法保存成手机技能，下次直接调用。
+- **OpenAI 官方渠道。** 支持的 Android 本机引擎可以用 ChatGPT 账号授权订阅，选用该账号可用的模型。
+- **酒馆和外观。** 补充了 SillyTavern 1.19 预设与 SPreset 支持。创意工坊的主题包可以改更多界面细节，壁纸也支持动图。
+- **iOS 实时活动。** 可以在锁屏和灵动岛查看进度。
+
+#### 修复与改进
+
+- 修复远程主机网页版偶尔打不开、部分连接断开后无法恢复的问题。
+- 修复终端键盘无法重新唤起、复制粘贴异常，以及部分 vivo 手机上手机操控无法读回结果的问题。
+- 减轻长对话和流式回复时的卡顿，修复通话字幕偶尔截断表情的问题。
+
+### English
+
+#### New features
+
+- **Full mode in the companion room.** Your companion can work in her own DSH session. See progress, call her or open her main session from the room. You can keep multiple companions or set your companion as Android’s default assistant.
+- **Floating island and phone skills on Android.** See phone control progress at the top of the screen or in the system island on supported phones. After a task, you can save the steps as a phone skill and use it again later.
+- **Official OpenAI channel.** On supported local Android engines, sign in with a ChatGPT account to authorize your subscription and use the models available to it.
+- **Tavern and appearance.** Expanded SillyTavern 1.19 preset and SPreset support. Workshop themes can customize more of the interface, and wallpapers can be animated.
+- **iOS Live Activities.** See progress on the Lock Screen and Dynamic Island.
+
+#### Fixes and improvements
+
+- Fixed cases where a remote host’s web app failed to open or a dropped connection failed to recover.
+- Fixed reopening the terminal keyboard, copying and pasting, and reading phone control results back on some vivo phones.
+- Reduced stutter in long chats and streaming replies. Fixed call captions occasionally cutting off emoji.
 
 ## 1.3.0 · 2026-11-21
 
@@ -146,7 +180,6 @@
 - 引擎和运行环境：上一次启动迟到的日志不再混进这次的故障快照和诊断；停止和自动安全模式同时发生时，状态不会被旧的「正在停止」盖回去；停止后迟到的刷新不会把已撤掉的前台通知发回来；持久终端的就绪判断不再受系统时间跳变影响。
 - 通知和视频：审批点过、结果还没回来时重发的通知保留你的决定，显示「正在处理」，不再给按钮；上一次申请迟到的失焦回调不会再暂停刚恢复的视频。
 - 其他修复：永久删除对话时一并删掉迁移留下的临时正文；最近会话的桌面快捷方式迁移失败时保留旧入口，下次再试（#22）；Agent Team 冷恢复时，子 agent 已领取的初始输入不再被判失败（实验功能）。
-- 聊天界面支持 `deepseek-harness-intelligent-ui` 插件：工具返回的声明式、widget 和 composition 界面会显示成聊天里的交互卡片，支持按钮、表单、表格、图表和提问；卡片按需创建受限 WebView，不加载远端代码，网络和链接按插件的客户端策略收紧；离线渲染器内置 KaTeX/Mermaid 等库，图片/视频按 `allowMedia`/`mediaOrigins` 放行，卡片文字可长按选中，表格在手机上自动换行且不抢占左右滑动，内容边距收窄，长表格/图表/地图可全屏查看；分享卡片和分享链接都会带上 UI 内容；声明式界面用原生卡片壳，widget 卡片在聊天里直接贴边展示、不再套一层卡片，在分享图片和分享链接回放页则按受限 HTML/CSS 保真还原字体与粗细。
 
 ### English
 
@@ -158,7 +191,6 @@
 - Engine and runtime: late log lines from the previous start no longer end up in this start's failure snapshot and diagnostics. When stopping and automatic safe mode happen together, an old Stopping state no longer overwrites the current one. A late refresh after stopping no longer brings back a foreground notification that was already removed. The persistent terminal's readiness checks are no longer thrown off by the system clock jumping.
 - Notifications and video: a notification re-sent after you answered an approval but before the result came back keeps your decision and shows Processing, with no buttons. A late focus-loss callback from an earlier request no longer pauses a video you just resumed.
 - Other fixes: deleting a chat for good also removes the temporary text left by migration. If moving the recent-chat home screen shortcuts fails, the old entry stays and it tries again later (#22). In Agent Team cold recovery, initial input a sub-agent had already taken is no longer marked failed (experimental feature).
-- Chat supports the `deepseek-harness-intelligent-ui` plugin: declarative, widget and composition UIs returned by tools appear as interactive cards in chat, with buttons, forms, tables, charts and questions. Cards create a restricted WebView on demand, load no remote code, and tighten network and link access according to the plugin's client policy. The bundled offline renderer includes KaTeX/Mermaid and other libraries; remote images/video follow `allowMedia`/`mediaOrigins`; card text supports long-press selection, tables wrap on phones without claiming horizontal swipes, content padding is narrower, and long tables/charts/maps have full-screen view; share cards and share links include the UI content; declarative cards use a native shell, while widget cards render edge-to-edge in chat without a second card shell and keep their HTML/CSS typography in both the share image and the replay page.
 
 ## 1.0.14 · 2026-11-09
 

@@ -24,6 +24,8 @@ import '../../state/attachments.dart' show DraftAttachment;
 import '../../state/chat_reveal.dart';
 import '../../state/chat_state.dart';
 import '../../state/connection_state.dart';
+import '../../companion/companion_reply.dart' show companionHasMarks, companionWithoutMarks;
+import '../../companion/companion_state.dart' show companionSessionFilterProvider;
 import '../../state/hosts_state.dart' show HostKind, activeHostProvider;
 import '../../state/intelligent_ui.dart';
 import '../../state/regenerate.dart';
@@ -329,6 +331,17 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   final _showJump = ValueNotifier<bool>(false);
   final _hasNew = ValueNotifier<bool>(false);
 
+  _JumpToBottom? _jump;
+
+  /// Streaming changes the rows but not the floating button's pending count.
+  _JumpToBottom _jumpButton(ChatState state) {
+    final waiting =
+        state.questions.length + state.approvals.where((a) => !state.autoAnswered.contains(a.eventId)).length;
+    final button = _jump;
+    if (button != null && button.waiting == waiting) return button;
+    return _jump = _JumpToBottom(visible: _showJump, hasNew: _hasNew, waiting: waiting, onTap: jumpToBottom);
+  }
+
   /// before 段最后一行的主键;null = before 段为空。首次加载完成时确定。
   String? _splitKey;
   bool _splitChosen = false;
@@ -357,7 +370,8 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   /// ([_deriveRows]), the motion duration and the language ([build]), the
   /// fork / regenerate marks ([_clearBuiltRows]) and which callbacks are given
   /// ([didUpdateWidget]).
-  final Map<String, ({ChatRow row, double gap, bool divided, Widget widget})> _built = {};
+  final Map<String, ({ChatRow row, double gap, bool divided, int? slot, Widget widget})> _built = {};
+  SliverList? _historySliver;
   Duration? _builtMotion;
   Locale? _builtLocale;
   ThemeShapeSpec _builtShapes = const ThemeShapeSpec();
@@ -447,13 +461,18 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
         !same(oldWidget.onResend, widget.onResend) ||
         !same(oldWidget.onQuote, widget.onQuote) ||
         !same(oldWidget.onSwitchModel, widget.onSwitchModel)) {
-      _built.clear();
+      _forgetBuiltRows();
     }
+  }
+
+  void _forgetBuiltRows() {
+    _built.clear();
+    _historySliver = null;
   }
 
   void _clearBuiltRows(VoidCallback change) => setState(() {
     change();
-    _built.clear();
+    _forgetBuiltRows();
   });
 
   void _quote(String passage) => widget.onQuote?.call(passage);
@@ -650,6 +669,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     List<IntelligentUiArtifact> intelligentUis = const [],
     String hostId = '',
     String sessionId = '',
+    bool compactTools = false,
   }) {
     final previous = _builtState;
     if (s.loading || !foldTurns) {
@@ -670,6 +690,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     _builtState = s;
     final inputs = (
       foldTurns,
+      compactTools,
       artifacts,
       s.items,
       s.approvals,
@@ -687,7 +708,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     if (_rowsInputs == inputs) {
       // Nothing the rows are made of changed, but what they read from the
       // controller (branch points, reply ids) may have.
-      if (changed) _built.clear();
+      if (changed) _forgetBuiltRows();
       return;
     }
     _rowsInputs = inputs;
@@ -722,13 +743,19 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       intelligentUis: intelligentUis,
       hostId: hostId,
       sessionId: sessionId,
+      compactTools: compactTools,
     );
     _index = _rowCache.index;
     // Only a draft streaming on keeps the other rows' widgets: anything else
     // may change what a row shows beyond its own item (running, pending,
     // later items, controller lookups).
     final draftSays = _draftHasWords(s.items);
-    if (!_rowCache.onlyDraftChanged || draftSays != _draftSays) _built.clear();
+    final unchanged = _rowCache.unchangedPrefix;
+    if (unchanged == null || draftSays != _draftSays) {
+      _forgetBuiltRows();
+    } else if (unchanged < previousSplit) {
+      _historySliver = null;
+    }
     _draftSays = draftSays;
     // 被插话切开的轮:前几片的摘要行(`tp<轮起点>@<插话>`)跟最后一片一起收。
     // 这一帧没建出来的(在屏幕外)不留到以后:翻回去时不该再播一遍。
@@ -798,6 +825,8 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       final folded = _rows.whereType<TurnProcessRow>().where((row) => row.rows.any((child) => child.key == _splitKey));
       _splitKey = folded.isEmpty ? _lastStableKey(beforeSeq: s.runningTurn?.startSeq) : folded.first.key;
     }
+
+    if (_split != previousSplit) _historySliver = null;
 
     if (uiTraceEnabled) {
       uiTrace('chat-list', 'rows', {
@@ -963,13 +992,16 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final s = ref.watch(chatProvider(widget.sessionId));
     _running = s.running;
+    // Her conversation reads as talk: marks out, what she used folded away.
+    _hers = ref.watch(companionSessionFilterProvider)(ref.watch(activeHostProvider), widget.sessionId);
     _deriveRows(
       s,
-      foldTurns: ref.watch(settingsProvider.select((s) => s.foldCompletedTurns)),
+      foldTurns: _hers || ref.watch(settingsProvider.select((s) => s.foldCompletedTurns)),
       artifacts: ref.watch(sessionArtifactsProvider(widget.sessionId)),
       intelligentUis: s.intelligentUis,
       hostId: ref.read(activeHostProvider).id,
       sessionId: widget.sessionId,
+      compactTools: _hers,
     );
     final rows = _rows;
     final split = _split;
@@ -992,7 +1024,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       _builtShapes = shapes;
       _builtDivider = divider;
       _builtDividerColor = dividerColor;
-      _built.clear();
+      _forgetBuiltRows();
     }
 
     // Images in replies read this conversation's workspace.
@@ -1063,7 +1095,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
                             hasMore: s.hasMoreHistory,
                           ),
                         ),
-                        SliverList(
+                        _historySliver ??= SliverList(
                           key: _beforeKey,
                           delegate: SliverChildBuilderDelegate(
                             (context, i) => _buildRow(split - 1 - i),
@@ -1076,8 +1108,8 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
                         ),
                         SliverList(
                           key: _centerKey,
-                          delegate: SliverChildBuilderDelegate(
-                            (context, i) => _buildRow(split + i),
+                          delegate: _ForwardRowDelegate(
+                            (context, i) => _buildRow(split + i, forward: (context: context, slot: i)),
                             childCount: rows.length - split,
                             findChildIndexCallback: (key) {
                               final i = key is ValueKey<String> ? _index[key.value] : null;
@@ -1096,17 +1128,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
               Positioned(
                 right: math.max(0.0, (constraints.maxWidth - AppSpace.readingWidth) / 2) + AppSpace.floatInset,
                 bottom: widget.bottomInset + 12,
-                // The pet keeps out of the key's way while it shows.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _showJump,
-                  builder: (context, visible, child) => PetAvoid(active: visible, child: child!),
-                  child: _JumpToBottom(
-                    visible: _showJump,
-                    hasNew: _hasNew,
-                    waiting: s.questions.length + s.approvals.where((a) => !s.autoAnswered.contains(a.eventId)).length,
-                    onTap: jumpToBottom,
-                  ),
-                ),
+                child: _jumpButton(s),
               ),
             ],
           );
@@ -1115,7 +1137,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildRow(int index) {
+  Widget _buildRow(int index, {({BuildContext context, int slot})? forward}) {
     final row = _rows[index];
     final previous = index > 0 ? _rows[index - 1] : null;
     final gap = _gapBefore(row, previous, _builtShapes);
@@ -1123,16 +1145,30 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
     final fresh = _fresh.remove(row.key);
     // A row's first appearance (fade in, settle) plays once: that build is
     // not kept, or scrolling back to the row would play it again.
-    if (fresh != null || _settling.contains(row.key)) {
-      _built.remove(row.key);
-      return _rowFrame(row, gap, fresh, divided);
-    }
+    final reusable = fresh == null && !_settling.contains(row.key);
     final built = _built[row.key];
-    if (built != null && identical(built.row, row) && built.gap == gap && built.divided == divided) {
+    if (reusable &&
+        built != null &&
+        identical(built.row, row) &&
+        built.gap == gap &&
+        built.divided == divided &&
+        built.slot == forward?.slot) {
       return built.widget;
     }
-    final frame = _rowFrame(row, gap, null, divided);
-    _built[row.key] = (row: row, gap: gap, divided: divided, widget: frame);
+    if (!reusable) {
+      if (index < _split) _historySliver = null;
+      _built.remove(row.key);
+    }
+    Widget? body;
+    Widget makeRow() => body = _rowFrame(row, gap, fresh, divided);
+    // Forward rows cache the SDK's complete child. Its semantics index belongs
+    // to this slot; a moved row needs a new wrapper even when its body is stable.
+    final frame = forward == null
+        ? makeRow()
+        : SliverChildBuilderDelegate((_, _) => makeRow()).build(forward.context, forward.slot)!;
+    if (reusable && body != null) {
+      _built[row.key] = (row: row, gap: gap, divided: divided, slot: forward?.slot, widget: frame);
+    }
     return frame;
   }
 
@@ -1294,7 +1330,14 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
   // ---------------------------------------------------------------------------
   // 消息操作:分叉打开的是一个新对话,原对话不动。
 
+  /// This is the companion's conversation (伙伴小屋).
+  bool _hers = false;
+
   Widget _reply(AssistantChatItem item, bool showActions, TurnTrace? footnote) {
+    // Her expression and action marks move her in the room; here they are not words.
+    if (_hers && companionHasMarks(item.text, streaming: item.streaming)) {
+      item = replyWithText(item, companionWithoutMarks(item.text, streaming: item.streaming));
+    }
     // A picture a media card shows is not drawn again in the reply.
     if (item.text.contains('![')) {
       if (withoutShownImages(item.text, ref.read(sessionMediaPathsProvider(widget.sessionId))) case final text?) {
@@ -1623,6 +1666,15 @@ class _RenderInlineEditorReveal extends RenderProxyBox {
   }
 }
 
+// _buildRow returns the forward child's complete framework wrapper, including
+// its salted key. The inherited findIndexByKey translates it on reorder.
+class _ForwardRowDelegate extends SliverChildBuilderDelegate {
+  const _ForwardRowDelegate(super.builder, {required int super.childCount, required super.findChildIndexCallback});
+
+  @override
+  Widget? build(BuildContext context, int index) => index < 0 || index >= childCount! ? null : builder(context, index);
+}
+
 /// 列表顶端:加载更早历史时的小环;没有更多时什么也不画。
 class _HistoryHeader extends StatelessWidget {
   const _HistoryHeader({required this.loading, required this.hasMore});
@@ -1737,25 +1789,28 @@ class _JumpToBottom extends StatelessWidget {
 
     return ValueListenableBuilder<bool>(
       valueListenable: visible,
-      builder: (context, show, _) => IgnorePointer(
-        ignoring: !show,
-        child: AnimatedScale(
-          scale: show ? 1 : (fluid ? 0.6 : 0.8),
-          duration: fluid && show ? AppMotion.popCurve.duration : quick,
-          curve: fluid && show ? AppMotion.popCurve : AppMotion.enter,
-          child: AnimatedOpacity(
-            opacity: show ? 1 : 0,
-            duration: quick,
-            child: Semantics(
-              button: true,
-              label: waiting > 0 ? l10n.chatWaitingBackToBottom(waiting) : l10n.chatBackToBottom,
-              excludeSemantics: true,
-              onTap: onTap,
-              child: AnimatedSwitcher(
-                duration: quick,
-                layoutBuilder: (current, previous) =>
-                    Stack(alignment: Alignment.centerRight, children: [...previous, ?current]),
-                child: waiting > 0 ? pill : circle,
+      builder: (context, show, _) => PetAvoid(
+        active: show,
+        child: IgnorePointer(
+          ignoring: !show,
+          child: AnimatedScale(
+            scale: show ? 1 : (fluid ? 0.6 : 0.8),
+            duration: fluid && show ? AppMotion.popCurve.duration : quick,
+            curve: fluid && show ? AppMotion.popCurve : AppMotion.enter,
+            child: AnimatedOpacity(
+              opacity: show ? 1 : 0,
+              duration: quick,
+              child: Semantics(
+                button: true,
+                label: waiting > 0 ? l10n.chatWaitingBackToBottom(waiting) : l10n.chatBackToBottom,
+                excludeSemantics: true,
+                onTap: onTap,
+                child: AnimatedSwitcher(
+                  duration: quick,
+                  layoutBuilder: (current, previous) =>
+                      Stack(alignment: Alignment.centerRight, children: [...previous, ?current]),
+                  child: waiting > 0 ? pill : circle,
+                ),
               ),
             ),
           ),

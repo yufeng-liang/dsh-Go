@@ -3,9 +3,9 @@
 // geometry tests measure real text.
 
 import 'dart:io';
+import 'dart:ui' show loadFontFromList;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// Noto Sans CJK as the tests' CJK fallback. It is also the last entry of
 /// `AppType.monoFallback`, so Chinese inside code picks it up too.
@@ -28,26 +28,22 @@ Future<void> loadTestFonts() async {
       File(Platform.resolvedExecutable).parent.parent.parent.parent.parent.parent.path;
   final material = '$flutterRoot/bin/cache/artifacts/material_fonts';
 
-  Future<void> family(String name, List<String> paths) async {
-    final loader = FontLoader(name);
-    for (final path in paths) {
-      final file = File(path);
-      if (!file.existsSync()) {
-        throw StateError('Test font missing: $path');
-      }
-      loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+  Future<void> face(String path, List<String> families) async {
+    final file = File(path);
+    if (!file.existsSync()) {
+      throw StateError('Test font missing: $path');
     }
-    await loader.load();
+    final bytes = file.readAsBytesSync();
+    for (final family in families) {
+      await loadFontFromList(bytes, fontFamily: family);
+    }
   }
 
-  await family('MaterialIcons', ['$material/MaterialIcons-Regular.otf']);
-  await family('DshIcons', ['assets/fonts/DshIcons.ttf']);
-  await family('JetBrainsMono', [
-    'assets/fonts/JetBrainsMono-Regular.ttf',
-    'assets/fonts/JetBrainsMono-Medium.ttf',
-    'assets/fonts/JetBrainsMono-Bold.ttf',
-    'assets/fonts/JetBrainsMono-Italic.ttf',
-  ]);
+  await face('$material/MaterialIcons-Regular.otf', const ['MaterialIcons']);
+  await face('assets/fonts/DshIcons.ttf', const ['DshIcons']);
+  for (final style in ['Regular', 'Medium', 'Bold', 'Italic']) {
+    await face('assets/fonts/JetBrainsMono-$style.ttf', const ['JetBrainsMono']);
+  }
   final configuredFontDir = Platform.environment['DSH_TEST_FONT_DIR'];
   final fontDir = configuredFontDir ?? (Platform.isWindows ? 'C:/Windows/Fonts' : '/usr/share/fonts/noto-cjk');
   String pick(String preferred, List<String> fallbacks) {
@@ -57,6 +53,7 @@ Future<void> loadTestFonts() async {
     return preferred;
   }
 
+  // Windows 上没有 Noto CJK 的 ttc:退回系统微软雅黑,否则整批测试直接失败。
   final regular = pick('$fontDir/NotoSansCJK-Regular.ttc', [
     if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
   ]);
@@ -64,22 +61,20 @@ Future<void> loadTestFonts() async {
     if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyhbd.ttc',
     if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
   ]);
-  // The display sizes are w300: the light face, as on ROMs whose system sans
-  // has one.
+  // Display sizes are w300: the light face, as on ROMs whose system sans has one.
   final light = pick('$fontDir/NotoSansCJK-Light.ttc', [
     if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyhl.ttc',
     if (configuredFontDir == null && Platform.isWindows) '$fontDir/msyh.ttc',
     regular,
   ]);
-  final cjk = <String>{regular, bold}.toList();
-  final sans = <String>{light, ...cjk}.toList();
-  await family(sansFamily, sans);
-  await family(cjkFamily, sans);
-  // `AppType.mono` falls back through `monospace` and `Noto Sans Mono CJK SC`
-  // before Noto Sans CJK; the test engine answers an unknown family with its
-  // box font for part of CJK. Give those names real glyphs too.
-  await family('monospace', cjk);
-  await family('Noto Sans Mono CJK SC', cjk);
+  // `AppType.mono` falls back through `monospace` and `Noto Sans Mono CJK SC`, which the
+  // test engine would answer with its box font for part of CJK: regular and bold for those.
+  const mono = ['monospace', 'Noto Sans Mono CJK SC'];
+  final sans = [sansFamily, cjkFamily];
+  final aliases = [...sans, ...mono];
+  await face(light, sans);
+  await face(regular, aliases);
+  await face(bold, aliases);
 }
 
 /// [theme] with a family named on every component text style built from the

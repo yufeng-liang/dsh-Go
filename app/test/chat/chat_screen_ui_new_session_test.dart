@@ -33,6 +33,7 @@ class _UiChatController extends FakeChatController {
     List<DraftAttachment> attachments = const [],
     SendMode mode = SendMode.now,
     bool verbatim = false,
+    String? originalRequestId,
     Future<bool> Function(String requestId)? beforeDeliver,
     bool Function()? deliveryAllowed,
   }) async {
@@ -46,6 +47,7 @@ class _UiChatController extends FakeChatController {
       attachments: attachments,
       mode: mode,
       verbatim: verbatim,
+      originalRequestId: originalRequestId,
       beforeDeliver: beforeDeliver,
       deliveryAllowed: deliveryAllowed,
     );
