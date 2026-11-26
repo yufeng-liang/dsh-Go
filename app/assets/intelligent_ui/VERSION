@@ -1,6 +1,6 @@
-deepseek-harness-intelligent-ui 0.2.16
+deepseek-harness-intelligent-ui 0.2.17
 upstream: https://github.com/dreamfarer-space/deepseek-harness-intelligent-ui
-commit: bbd6f8c
+commit: 9706774
 file: renderer/renderer.js
 variant: offline (built with `npm run build:offline`)
-local patch: sendNewSession nodeId propagation + retry/cleanup hardening + cancellation handling
+local patch: sendNewSession nodeId propagation + retry/cleanup hardening + cancellation handling + Mermaid loading state

@@ -20,14 +20,17 @@ void main() {
       expect(renderer, contains('sendNewSession:t.sendNewSession?'));
       expect(renderer, contains('sendNewSession(s.admitPrompt(v),S)'));
       expect(renderer, contains('AbortError'));
+      expect(renderer, contains('diagramLoading'));
+      expect(renderer, contains('正在渲染图表'));
     });
 
     test('asset version records the local patch', () {
       final version = File('assets/intelligent_ui/VERSION').readAsStringSync();
 
-      expect(version, contains('deepseek-harness-intelligent-ui 0.2.16'));
+      expect(version, contains('deepseek-harness-intelligent-ui 0.2.17'));
       expect(version, contains('local patch: sendNewSession'));
       expect(version, contains('cancellation handling'));
+      expect(version, contains('Mermaid loading state'));
     });
   });
 }
